@@ -117,7 +117,7 @@ except ImportError:
 
 def main() -> None:
     transport = os.environ.get("MCP_TRANSPORT", "streamable-http")
-    port = int(os.environ.get("PORT", "8000"))
+    port = int(os.environ.get("PORT", "9933"))
     host = os.environ.get("HOST", "0.0.0.0")
     _configure_logging(transport)
 

@@ -64,7 +64,7 @@ Claude Desktop config:
 ### 3) Docker
 
 ```bash
-docker run --rm -p 8000:8000 \
+docker run --rm -p 9933:9933 \
   -e MCP_TRANSPORT=streamable-http \
   -v ppb-hf-cache:/data/huggingface \
   ghcr.io/paulplee/ppb-mcp:latest
@@ -76,7 +76,7 @@ docker run --rm -p 8000:8000 \
 git clone https://github.com/paulplee/ppb-mcp
 cd ppb-mcp
 pip install -e ".[dev]"
-ppb-mcp           # streamable-http on :8000
+ppb-mcp           # streamable-http on :9933
 ```
 
 ## Connect Your LLM Client
@@ -240,7 +240,7 @@ env MCP_TRANSPORT=stdio ppb-mcp
 | `REFRESH_INTERVAL_HOURS` | `1`                    | Background refresh cadence   |
 | `MCP_TRANSPORT`          | `streamable-http`      | `stdio` or `streamable-http` |
 | `HOST`                   | `0.0.0.0`              | HTTP bind host               |
-| `PORT`                   | `8000`                 | HTTP bind port               |
+| `PORT`                   | `9933`                 | HTTP bind port               |
 | `LOG_LEVEL`              | `INFO`                 | Python `logging` level       |
 
 ## Self-hosting (Lightsail / any Ubuntu VPS)

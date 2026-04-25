@@ -28,12 +28,12 @@ USER ppbuser
 
 ENV MCP_TRANSPORT=streamable-http \
     HOST=0.0.0.0 \
-    PORT=8000 \
+    PORT=9933 \
     LOG_LEVEL=INFO
 
-EXPOSE 8000
+EXPOSE 9933
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-    CMD curl -fsS http://127.0.0.1:8000/health || exit 1
+    CMD curl -fsS http://127.0.0.1:9933/health || exit 1
 
 CMD ["ppb-mcp"]
