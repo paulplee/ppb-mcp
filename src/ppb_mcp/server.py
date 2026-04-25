@@ -86,13 +86,6 @@ except ImportError:
     pass
 
 
-async def _startup_and_refresh_loop() -> None:
-    """Load the dataset synchronously, then run the background refresh loop forever."""
-    store = PPBDataStore.instance()
-    await store.ensure_loaded()
-    await store.run_refresh_loop()
-
-
 def main() -> None:
     transport = os.environ.get("MCP_TRANSPORT", "streamable-http")
     port = int(os.environ.get("PORT", "8000"))
