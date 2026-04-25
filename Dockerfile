@@ -11,7 +11,7 @@ WORKDIR /app
 
 # Install build deps for hatchling
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ca-certificates curl \
+    ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy package metadata first for better caching
