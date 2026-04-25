@@ -9,6 +9,8 @@ from contextlib import asynccontextmanager
 
 import anyio
 from fastmcp import FastMCP
+from starlette.middleware import Middleware
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ppb_mcp import __version__
 from ppb_mcp.data import PPBDataStore
@@ -18,6 +20,33 @@ from ppb_mcp.tools.query import query_ppb_results
 from ppb_mcp.tools.recommend import recommend_quantization
 
 logger = logging.getLogger("ppb_mcp")
+
+
+class _AcceptPatchMiddleware:
+    """Patch the Accept header on /mcp requests to include text/event-stream.
+
+    The MCP streamable-HTTP spec requires clients to send
+    ``Accept: application/json, text/event-stream``. Many clients only send
+    ``Accept: application/json``, which causes the mcp SDK to return 406.
+    This middleware silently adds ``text/event-stream`` when absent, making
+    the server tolerant of non-compliant clients without altering any other
+    behaviour.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http" and scope.get("path", "").rstrip("/") == "/mcp":
+            accept_bytes = next((v for k, v in scope["headers"] if k == b"accept"), None)
+            accept = accept_bytes.decode("latin-1") if accept_bytes is not None else ""
+            if "text/event-stream" not in accept:
+                new_accept = (accept + ", text/event-stream").lstrip(", ")
+                new_headers = [(k, v) for k, v in scope["headers"] if k != b"accept"]
+                new_headers.append((b"accept", new_accept.encode("latin-1")))
+                scope = dict(scope)
+                scope["headers"] = new_headers
+        await self.app(scope, receive, send)
 
 
 def _configure_logging(transport: str) -> None:
@@ -95,7 +124,12 @@ def main() -> None:
     if transport == "stdio":
         app.run(transport="stdio")
     else:
-        app.run(transport="streamable-http", host=host, port=port)
+        app.run(
+            transport="streamable-http",
+            host=host,
+            port=port,
+            middleware=[Middleware(_AcceptPatchMiddleware)],
+        )
 
 
 if __name__ == "__main__":
