@@ -1,0 +1,16 @@
+{
+  "name": "ppb",
+  "description": "Poor Paul's Benchmark — queryable GPU inference benchmarks (throughput, VRAM, quantization, concurrent users) for LLM serving decisions.",
+  "version": "0.1.0",
+  "homepage": "https://github.com/paulplee/ppb-mcp",
+  "transport": {
+    "type": "http",
+    "url": "https://mcp.poorpaul.dev/mcp"
+  },
+  "tools": [
+    "list_tested_configs",
+    "query_ppb_results",
+    "recommend_quantization",
+    "get_gpu_headroom"
+  ]
+}

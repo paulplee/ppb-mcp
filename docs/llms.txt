@@ -1,0 +1,31 @@
+# ppb-mcp
+
+> An MCP server exposing Poor Paul's Benchmark (PPB) — real GPU inference benchmarks for quantized LLMs — as queryable tools.
+
+## What this is
+A FastMCP server that wraps the HuggingFace dataset `paulplee/ppb-results`
+(throughput, VRAM, concurrent users, quantization) and exposes 4 tools to LLM clients.
+
+## Endpoint
+- **Streamable HTTP**: https://mcp.poorpaul.dev/mcp
+- **Health**: https://mcp.poorpaul.dev/health
+
+## Tools
+- `list_tested_configs` — list every tested GPU, model, and quantization
+- `query_ppb_results` — filter raw rows by GPU / VRAM / model / quant / users / backend
+- `recommend_quantization(gpu_vram_gb, concurrent_users, gpu_name?, model?, priority=balance)` — three-tier empirical-first recommendation
+- `get_gpu_headroom(gpu_name, quantization, model, concurrent_users)` — VRAM sanity check
+
+## Confidence tiers
+- **high** — ≥3 empirical rows match exactly
+- **medium** — 1–2 empirical rows OR same model+quant on a different GPU at the same concurrency
+- **low** — formula-only: `(params_B × bits_per_weight / 8) × 1.15`, viable if ≤ 90% of VRAM
+
+## Data source
+HuggingFace dataset: https://huggingface.co/datasets/paulplee/ppb-results
+- ~30,000 rows, refreshed hourly
+- 3 GPUs today: NVIDIA RTX 5090 (32 GB), Apple M4 Pro (64 GB), NVIDIA GB10 (120 GB)
+- 32 quantization variants, 34 models
+
+## Repository
+https://github.com/paulplee/ppb-mcp

@@ -1,0 +1,26 @@
+services:
+  ppb-mcp:
+    build: .
+    image: ppb-mcp:latest
+    container_name: ppb-mcp
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      - HF_DATASET=paulplee/ppb-results
+      - REFRESH_INTERVAL_HOURS=1
+      - MCP_TRANSPORT=streamable-http
+      - HOST=0.0.0.0
+      - PORT=8000
+      - LOG_LEVEL=INFO
+    volumes:
+      - hf-cache:/data/huggingface
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  hf-cache:
