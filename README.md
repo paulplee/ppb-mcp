@@ -12,18 +12,18 @@
 
 Connect any MCP-aware client (Claude Desktop, Cline, Continue, etc.) to ask questions like:
 
-- *"What's the best quantization for a 32 GB GPU running Qwen3.5-9B with 8 concurrent users?"*
-- *"Show me every model tested at Q4_K_M on the RTX 5090."*
-- *"Will Llama-13B at Q5_K_M fit on a 24 GB GPU at 4 concurrent users?"*
+- _"What's the best quantization for a 32 GB GPU running Qwen3.5-9B with 8 concurrent users?"_
+- _"Show me every model tested at Q4_K_M on the RTX 5090."_
+- _"Will Llama-13B at Q5_K_M fit on a 24 GB GPU at 4 concurrent users?"_
 
 It exposes **four tools** backed by 30,000+ real benchmark rows:
 
-| Tool | What it does |
-| --- | --- |
-| `list_tested_configs` | Lists every tested GPU, model, and quantization (call this first) |
-| `query_ppb_results` | Filters raw benchmark rows by GPU / VRAM / model / quant / users / backend |
+| Tool                     | What it does                                                                      |
+| ------------------------ | --------------------------------------------------------------------------------- |
+| `list_tested_configs`    | Lists every tested GPU, model, and quantization (call this first)                 |
+| `query_ppb_results`      | Filters raw benchmark rows by GPU / VRAM / model / quant / users / backend        |
 | `recommend_quantization` | Three-tier empirical-first recommendation engine (high / medium / low confidence) |
-| `get_gpu_headroom` | Sanity-checks a (gpu, model, quant, users) configuration for VRAM headroom |
+| `get_gpu_headroom`       | Sanity-checks a (gpu, model, quant, users) configuration for VRAM headroom        |
 
 ## Install
 
@@ -234,14 +234,14 @@ env MCP_TRANSPORT=stdio ppb-mcp
 
 ## Configuration
 
-| Env var | Default | Notes |
-| --- | --- | --- |
-| `HF_DATASET` | `paulplee/ppb-results` | HuggingFace dataset ID |
-| `REFRESH_INTERVAL_HOURS` | `1` | Background refresh cadence |
-| `MCP_TRANSPORT` | `streamable-http` | `stdio` or `streamable-http` |
-| `HOST` | `0.0.0.0` | HTTP bind host |
-| `PORT` | `8000` | HTTP bind port |
-| `LOG_LEVEL` | `INFO` | Python `logging` level |
+| Env var                  | Default                | Notes                        |
+| ------------------------ | ---------------------- | ---------------------------- |
+| `HF_DATASET`             | `paulplee/ppb-results` | HuggingFace dataset ID       |
+| `REFRESH_INTERVAL_HOURS` | `1`                    | Background refresh cadence   |
+| `MCP_TRANSPORT`          | `streamable-http`      | `stdio` or `streamable-http` |
+| `HOST`                   | `0.0.0.0`              | HTTP bind host               |
+| `PORT`                   | `8000`                 | HTTP bind port               |
+| `LOG_LEVEL`              | `INFO`                 | Python `logging` level       |
 
 ## Self-hosting (Lightsail / any Ubuntu VPS)
 

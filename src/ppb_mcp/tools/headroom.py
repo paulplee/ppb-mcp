@@ -1,4 +1,5 @@
 """get_gpu_headroom tool."""
+
 from __future__ import annotations
 
 from ppb_mcp.data import PPBDataStore

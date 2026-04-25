@@ -1,4 +1,5 @@
 """recommend_quantization tool — three-tier empirical-first algorithm."""
+
 from __future__ import annotations
 
 from typing import Literal
@@ -209,7 +210,9 @@ async def recommend_quantization(
                 f"recommendation uses {effective_users_t1}-user measurements as the "
                 "nearest tested benchmark.)"
             )
-        alternatives = [str(q) for q in best_per_quant["quant"].tolist() if str(q) != chosen_quant][:2]
+        alternatives = [str(q) for q in best_per_quant["quant"].tolist() if str(q) != chosen_quant][
+            :2
+        ]
         return QuantizationRecommendation(
             recommended_quantization=chosen_quant,
             model=chosen_model,
@@ -248,7 +251,9 @@ async def recommend_quantization(
         if total_est <= gpu_vram_gb * HEADROOM_FRACTION:
             headroom = gpu_vram_gb - total_est
             best_per_quant = ranked.drop_duplicates(subset=["quant"], keep="first")
-            alternatives = [str(q) for q in best_per_quant["quant"].tolist() if str(q) != chosen_quant][:2]
+            alternatives = [
+                str(q) for q in best_per_quant["quant"].tolist() if str(q) != chosen_quant
+            ][:2]
             reasoning = _build_reasoning(
                 tier=2,
                 quant=chosen_quant,

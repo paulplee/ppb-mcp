@@ -1,4 +1,5 @@
 """FastMCP server entrypoint for ppb-mcp."""
+
 from __future__ import annotations
 
 import logging

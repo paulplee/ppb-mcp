@@ -1,4 +1,5 @@
 """Pytest fixtures: synthetic PPB DataFrame mirroring the real schema."""
+
 from __future__ import annotations
 
 from collections.abc import Iterator
@@ -65,10 +66,37 @@ def _row(
 def _build_fixture_df() -> pd.DataFrame:
     rows: list[dict] = []
     # GPU A: 8 GB — only Q4_K_M Llama-2B fits at 1 user (edge case)
-    rows.append(_row(gpu_name="TestGPU-8GB", vram=8.0, model_base="Llama-2B", quant="Q4_K_M", users=1, tps=120.0))
-    rows.append(_row(gpu_name="TestGPU-8GB", vram=8.0, model_base="Llama-2B", quant="Q4_K_M", users=2, tps=180.0))
+    rows.append(
+        _row(
+            gpu_name="TestGPU-8GB",
+            vram=8.0,
+            model_base="Llama-2B",
+            quant="Q4_K_M",
+            users=1,
+            tps=120.0,
+        )
+    )
+    rows.append(
+        _row(
+            gpu_name="TestGPU-8GB",
+            vram=8.0,
+            model_base="Llama-2B",
+            quant="Q4_K_M",
+            users=2,
+            tps=180.0,
+        )
+    )
     # Smaller quant of bigger model on 8 GB
-    rows.append(_row(gpu_name="TestGPU-8GB", vram=8.0, model_base="Llama-7B", quant="Q4_K_M", users=1, tps=42.0))
+    rows.append(
+        _row(
+            gpu_name="TestGPU-8GB",
+            vram=8.0,
+            model_base="Llama-7B",
+            quant="Q4_K_M",
+            users=1,
+            tps=42.0,
+        )
+    )
 
     # GPU B: 16 GB — Q4 / Q5 / Q8 of Llama-7B at users=1, 2
     for quant, tps_factor in [("Q4_K_M", 1.0), ("Q5_K_M", 0.85), ("Q8_0", 0.6)]:
@@ -84,7 +112,16 @@ def _build_fixture_df() -> pd.DataFrame:
                 )
             )
     # Plus some Llama-13B on 16 GB
-    rows.append(_row(gpu_name="TestGPU-16GB", vram=16.0, model_base="Llama-13B", quant="Q4_K_M", users=1, tps=35.0))
+    rows.append(
+        _row(
+            gpu_name="TestGPU-16GB",
+            vram=16.0,
+            model_base="Llama-13B",
+            quant="Q4_K_M",
+            users=1,
+            tps=35.0,
+        )
+    )
 
     # GPU C: 24 GB — full sweep + a Mistral model family
     for quant, tps_factor in [("Q4_K_M", 1.0), ("Q5_K_M", 0.9), ("Q8_0", 0.7)]:
@@ -96,7 +133,7 @@ def _build_fixture_df() -> pd.DataFrame:
                     model_base="Llama-7B",
                     quant=quant,
                     users=users,
-                    tps=120.0 * tps_factor * (users ** 0.5),
+                    tps=120.0 * tps_factor * (users**0.5),
                 )
             )
             rows.append(
@@ -106,12 +143,30 @@ def _build_fixture_df() -> pd.DataFrame:
                     model_base="Mistral-7B",
                     quant=quant,
                     users=users,
-                    tps=110.0 * tps_factor * (users ** 0.5),
+                    tps=110.0 * tps_factor * (users**0.5),
                     org="mudler",
                 )
             )
-    rows.append(_row(gpu_name="TestGPU-24GB", vram=24.0, model_base="Llama-13B", quant="Q4_K_M", users=1, tps=55.0))
-    rows.append(_row(gpu_name="TestGPU-24GB", vram=24.0, model_base="Llama-13B", quant="Q4_K_M", users=2, tps=82.0))
+    rows.append(
+        _row(
+            gpu_name="TestGPU-24GB",
+            vram=24.0,
+            model_base="Llama-13B",
+            quant="Q4_K_M",
+            users=1,
+            tps=55.0,
+        )
+    )
+    rows.append(
+        _row(
+            gpu_name="TestGPU-24GB",
+            vram=24.0,
+            model_base="Llama-13B",
+            quant="Q4_K_M",
+            users=2,
+            tps=82.0,
+        )
+    )
 
     return pd.DataFrame(rows)
 

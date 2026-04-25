@@ -1,4 +1,5 @@
 """Tests for the four MCP tools."""
+
 from __future__ import annotations
 
 import pytest
@@ -73,9 +74,7 @@ class TestQuery:
 class TestRecommend:
     @pytest.mark.asyncio
     async def test_high_confidence_when_many_rows(self, store) -> None:
-        rec = await recommend_quantization(
-            gpu_vram_gb=24.0, concurrent_users=1, model="Llama-7B"
-        )
+        rec = await recommend_quantization(gpu_vram_gb=24.0, concurrent_users=1, model="Llama-7B")
         assert rec.recommended_quantization in {"Q4_K_M", "Q5_K_M", "Q8_0"}
         assert rec.confidence in {"high", "medium"}
         assert rec.estimated_tokens_per_second > 0
@@ -99,34 +98,26 @@ class TestRecommend:
 
     @pytest.mark.asyncio
     async def test_no_match_returns_low_confidence_or_empty(self, store) -> None:
-        rec = await recommend_quantization(
-            gpu_vram_gb=4.0, concurrent_users=32, model="Llama-13B"
-        )
+        rec = await recommend_quantization(gpu_vram_gb=4.0, concurrent_users=32, model="Llama-13B")
         # Either no fit (recommended_quantization == "(none)") or low confidence formula.
         assert rec.confidence == "low"
 
     @pytest.mark.asyncio
     async def test_returns_alternatives(self, store) -> None:
-        rec = await recommend_quantization(
-            gpu_vram_gb=24.0, concurrent_users=1, model="Llama-7B"
-        )
+        rec = await recommend_quantization(gpu_vram_gb=24.0, concurrent_users=1, model="Llama-7B")
         assert isinstance(rec.alternatives, list)
 
     @pytest.mark.asyncio
     async def test_recommend_floors_concurrent_users(self, store) -> None:
         # Fixture has rows for users in {1,2,4,8} on TestGPU-24GB.
         # Requesting 3 should floor to 2 and stay in Tier 1.
-        rec = await recommend_quantization(
-            gpu_vram_gb=24.0, concurrent_users=3, model="Llama-7B"
-        )
+        rec = await recommend_quantization(gpu_vram_gb=24.0, concurrent_users=3, model="Llama-7B")
         assert rec.recommended_quantization != "(none)"
         assert "nearest tested benchmark" in rec.reasoning
 
     @pytest.mark.asyncio
     async def test_recommend_no_floor_note_on_exact_match(self, store) -> None:
-        rec = await recommend_quantization(
-            gpu_vram_gb=24.0, concurrent_users=2, model="Llama-7B"
-        )
+        rec = await recommend_quantization(gpu_vram_gb=24.0, concurrent_users=2, model="Llama-7B")
         assert "nearest tested benchmark" not in rec.reasoning
 
 
