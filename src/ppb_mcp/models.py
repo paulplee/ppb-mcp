@@ -1,4 +1,5 @@
 """Pydantic response models for ppb-mcp tools."""
+
 from __future__ import annotations
 
 from typing import Literal
