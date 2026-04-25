@@ -112,6 +112,23 @@ class TestRecommend:
         )
         assert isinstance(rec.alternatives, list)
 
+    @pytest.mark.asyncio
+    async def test_recommend_floors_concurrent_users(self, store) -> None:
+        # Fixture has rows for users in {1,2,4,8} on TestGPU-24GB.
+        # Requesting 3 should floor to 2 and stay in Tier 1.
+        rec = await recommend_quantization(
+            gpu_vram_gb=24.0, concurrent_users=3, model="Llama-7B"
+        )
+        assert rec.recommended_quantization != "(none)"
+        assert "nearest tested benchmark" in rec.reasoning
+
+    @pytest.mark.asyncio
+    async def test_recommend_no_floor_note_on_exact_match(self, store) -> None:
+        rec = await recommend_quantization(
+            gpu_vram_gb=24.0, concurrent_users=2, model="Llama-7B"
+        )
+        assert "nearest tested benchmark" not in rec.reasoning
+
 
 class TestHeadroom:
     @pytest.mark.asyncio

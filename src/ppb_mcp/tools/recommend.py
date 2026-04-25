@@ -12,6 +12,22 @@ from ppb_mcp.tools._vram import bits_per_weight, estimate_vram_per_user_gb
 HEADROOM_FRACTION = 0.90  # leave 10% headroom for OS / driver overhead
 
 
+def _floor_concurrency(df: pd.DataFrame, requested: int) -> int:
+    """Return the largest tested concurrent_users value <= requested.
+
+    Falls back to the smallest tested value if none is <= requested.
+    """
+    if "concurrent_users" not in df.columns:
+        return requested
+    tested = sorted(df["concurrent_users"].dropna().unique().astype(int).tolist())
+    if not tested:
+        return requested
+    candidates = [v for v in tested if v <= requested]
+    if candidates:
+        return max(candidates)
+    return min(tested)
+
+
 def _normalize(series: pd.Series) -> pd.Series:
     s = series.astype(float)
     lo, hi = s.min(), s.max()
@@ -151,8 +167,9 @@ async def recommend_quantization(
         tier1 = tier1[tier1[vram_col].fillna(0) <= gpu_vram_gb]
     if gpu_name and "gpu_name" in tier1.columns:
         tier1 = tier1[tier1["gpu_name"].astype(str).str.contains(gpu_name, case=False, na=False)]
+    effective_users_t1 = _floor_concurrency(tier1, concurrent_users)
     if "concurrent_users" in tier1.columns:
-        tier1 = tier1[tier1["concurrent_users"] == concurrent_users]
+        tier1 = tier1[tier1["concurrent_users"] == effective_users_t1]
 
     if not tier1.empty:
         ranked = _rank(tier1, priority)
@@ -163,12 +180,15 @@ async def recommend_quantization(
         n_matches = int((tier1["quant"] == chosen_quant).sum())
         confidence = "high" if n_matches >= 3 else "medium"
 
-        per_user = float(top.get(vram_col, gpu_vram_gb)) / max(concurrent_users, 1)
-        total_used = float(top.get(vram_col, gpu_vram_gb))
-        # Use user's VRAM as the canvas — if matched on smaller GPU, headroom on user's card is bigger.
+        chosen_model_for_vram = str(top.get("model_base") or model_label)
+        per_user = estimate_vram_per_user_gb(chosen_model_for_vram, chosen_quant)
+        if per_user is None:
+            # Formula fallback: distribute the GPU's total VRAM across users.
+            per_user = float(top.get(vram_col, gpu_vram_gb)) / max(concurrent_users, 1)
+        total_used = per_user * concurrent_users
         headroom = gpu_vram_gb - total_used
         tps = float(top["throughput_tok_s"])
-        chosen_model = str(top.get("model_base") or model_label)
+        chosen_model = chosen_model_for_vram
 
         reasoning = _build_reasoning(
             tier=1,
@@ -183,6 +203,12 @@ async def recommend_quantization(
             tps=tps,
             n_rows=n_matches,
         )
+        if effective_users_t1 != concurrent_users:
+            reasoning += (
+                f" (Note: no data for {concurrent_users} concurrent users; "
+                f"recommendation uses {effective_users_t1}-user measurements as the "
+                "nearest tested benchmark.)"
+            )
         alternatives = [str(q) for q in best_per_quant["quant"].tolist() if str(q) != chosen_quant][:2]
         return QuantizationRecommendation(
             recommended_quantization=chosen_quant,
@@ -200,8 +226,9 @@ async def recommend_quantization(
 
     # ── Tier 2: empirical-near (any GPU, requested users, same model+quant universe) ──
     tier2 = base.copy()
+    effective_users_t2 = _floor_concurrency(tier2, concurrent_users)
     if "concurrent_users" in tier2.columns:
-        tier2 = tier2[tier2["concurrent_users"] == concurrent_users]
+        tier2 = tier2[tier2["concurrent_users"] == effective_users_t2]
 
     if not tier2.empty:
         # For each (model_base, quant) pair, take the best surrogate row by priority.
@@ -236,6 +263,12 @@ async def recommend_quantization(
                 n_rows=0,
                 surrogate_gpu=f"{surrogate_gpu} ({surrogate_vram:.0f} GB)",
             )
+            if effective_users_t2 != concurrent_users:
+                reasoning += (
+                    f" (Note: no data for {concurrent_users} concurrent users; "
+                    f"recommendation uses {effective_users_t2}-user measurements as the "
+                    "nearest tested benchmark.)"
+                )
             return QuantizationRecommendation(
                 recommended_quantization=chosen_quant,
                 model=chosen_model,

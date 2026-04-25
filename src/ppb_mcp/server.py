@@ -4,7 +4,9 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from contextlib import asynccontextmanager
 
+import anyio
 from fastmcp import FastMCP
 
 from ppb_mcp import __version__
@@ -29,6 +31,20 @@ def _configure_logging(transport: str) -> None:
     )
 
 
+@asynccontextmanager
+async def _lifespan(server):  # noqa: ANN001 - FastMCP passes its own server obj
+    """Load dataset on startup; run background refresh for the server's lifetime."""
+    store = PPBDataStore.instance()
+    try:
+        async with anyio.create_task_group() as tg:
+            await store.ensure_loaded()
+            tg.start_soon(store.run_refresh_loop)
+            yield
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.error("Lifespan error: %s", exc)
+        yield  # still serve, just without background refresh
+
+
 app: FastMCP = FastMCP(
     name="Poor Paul's MCP",
     instructions=(
@@ -37,6 +53,7 @@ app: FastMCP = FastMCP(
         "and concurrent user count. Data source: https://huggingface.co/datasets/paulplee/ppb-results"
     ),
     version=__version__,
+    lifespan=_lifespan,
 )
 
 # Register the four tools.
@@ -81,21 +98,9 @@ def main() -> None:
     host = os.environ.get("HOST", "0.0.0.0")
     _configure_logging(transport)
 
-    # Eagerly load the dataset before serving so the first tool call is fast.
-    store = PPBDataStore.instance()
-    try:
-        store.load_sync()
-    except (RuntimeError, OSError) as exc:
-        logger.error("Initial dataset load failed: %s. Server will start with empty cache.", exc)
-
     if transport == "stdio":
         app.run(transport="stdio")
     else:
-        # Background refresh task is owned by the user — for HTTP mode FastMCP runs
-        # an asyncio loop, but installing a periodic task into it requires using
-        # FastMCP lifespan hooks. For simplicity we rely on an external scheduler
-        # (or restart) for refreshes in v0.1; explicit refresh can be triggered
-        # via the data store. TODO: integrate with FastMCP lifespan in v0.2.
         app.run(transport="streamable-http", host=host, port=port)
 
 

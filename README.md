@@ -79,6 +79,142 @@ pip install -e ".[dev]"
 ppb-mcp           # streamable-http on :8000
 ```
 
+## Connect Your LLM Client
+
+All clients use the same hosted endpoint: `https://mcp.poorpaul.dev/mcp`
+
+### Claude Desktop
+
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
+or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+
+```json
+{
+  "mcpServers": {
+    "ppb": {
+      "transport": { "type": "http", "url": "https://mcp.poorpaul.dev/mcp" }
+    }
+  }
+}
+```
+
+Restart Claude Desktop after saving.
+
+### Cursor
+
+Edit `~/.cursor/mcp.json` (create if it doesn't exist):
+
+```json
+{
+  "mcpServers": {
+    "ppb": {
+      "url": "https://mcp.poorpaul.dev/mcp",
+      "type": "http"
+    }
+  }
+}
+```
+
+Or via UI: **Settings → Tools & Integrations → MCP → Add Server**.
+
+### Windsurf
+
+Edit `~/.codeium/windsurf/mcp_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "ppb": {
+      "serverUrl": "https://mcp.poorpaul.dev/mcp",
+      "transport": "http"
+    }
+  }
+}
+```
+
+### VS Code (GitHub Copilot Agent Mode)
+
+Add to your `.vscode/mcp.json` (workspace) or User `settings.json`:
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "ppb": {
+        "type": "http",
+        "url": "https://mcp.poorpaul.dev/mcp"
+      }
+    }
+  }
+}
+```
+
+### Zed
+
+Add to `~/.config/zed/settings.json` under `"context_servers"`:
+
+```json
+{
+  "context_servers": {
+    "ppb": {
+      "command": {
+        "path": "env",
+        "args": ["MCP_TRANSPORT=stdio", "uvx", "ppb-mcp"]
+      }
+    }
+  }
+}
+```
+
+### Cline (VS Code extension)
+
+Open the Cline panel → **MCP Servers** tab → **Add Server** → select **SSE/HTTP** → paste `https://mcp.poorpaul.dev/mcp`.
+
+### Continue.dev
+
+Add to `~/.continue/config.yaml`:
+
+```yaml
+mcpServers:
+  - name: ppb
+    transport:
+      type: http
+      url: https://mcp.poorpaul.dev/mcp
+```
+
+### OpenCode
+
+Add to `~/.config/opencode/config.json`:
+
+```json
+{
+  "mcp": {
+    "ppb": {
+      "type": "remote",
+      "url": "https://mcp.poorpaul.dev/mcp"
+    }
+  }
+}
+```
+
+### Goose (Block)
+
+```bash
+goose mcp add ppb --transport http --url https://mcp.poorpaul.dev/mcp
+```
+
+### Any stdio-compatible client
+
+```bash
+# Zero-install (requires uv):
+env MCP_TRANSPORT=stdio uvx ppb-mcp
+
+# After pip install:
+env MCP_TRANSPORT=stdio ppb-mcp
+```
+
+> **Note on transport key names**: MCP clients are not yet fully standardised on JSON key names for the HTTP transport. If your client doesn't connect with `"type": "http"`, try `"transport": "http"`, `"type": "sse"`, or `"transport": "streamable-http"`. The endpoint URL is the same regardless.
+
 ## Example session
 
 ```text

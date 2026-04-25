@@ -45,24 +45,23 @@ async def get_gpu_headroom(
             warning=f"GPU {gpu_name!r} not found in the dataset; cannot determine VRAM capacity.",
         )
 
-    # Try to find an empirical row for the exact config.
-    per_user_empirical: float | None = None
-    if all(c in df.columns for c in ("gpu_name", "quant", "model_base", "concurrent_users")):
-        exact = df[
-            df["gpu_name"].astype(str).str.contains(gpu_name, case=False, na=False)
-            & (df["quant"] == quantization)
-            & df["model_base"].astype(str).str.contains(model, case=False, na=False)
-            & (df["concurrent_users"] == concurrent_users)
-        ]
-        if not exact.empty:
-            row_vram = exact[vram_col].dropna()
-            if not row_vram.empty:
-                # Empirical: row's total VRAM divided by users gives per-user load.
-                per_user_empirical = float(row_vram.iloc[0]) / max(concurrent_users, 1)
-
-    per_user = per_user_empirical
+    # Use the formula-based per-user estimate as the primary source. The dataset's
+    # `gpu_total_vram_gb` is the GPU's capacity, NOT the model's footprint, so it
+    # cannot be used as a per-user VRAM measurement.
+    per_user = estimate_vram_per_user_gb(model, quantization)
     if per_user is None:
-        per_user = estimate_vram_per_user_gb(model, quantization)
+        # Fallback: use the column value if any matching row exists. This is a rough
+        # ceiling (the GPU's VRAM) and only kicks in when the model name is unparseable.
+        if all(c in df.columns for c in ("gpu_name", "quant", "model_base")):
+            exact = df[
+                df["gpu_name"].astype(str).str.contains(gpu_name, case=False, na=False)
+                & (df["quant"] == quantization)
+                & df["model_base"].astype(str).str.contains(model, case=False, na=False)
+            ]
+            if not exact.empty:
+                row_vram = exact[vram_col].dropna()
+                if not row_vram.empty:
+                    per_user = float(row_vram.iloc[0]) / max(concurrent_users, 1)
     if per_user is None:
         return GPUHeadroom(
             gpu_name=gpu_name,

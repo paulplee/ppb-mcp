@@ -88,7 +88,7 @@ def _build_fixture_df() -> pd.DataFrame:
 
     # GPU C: 24 GB — full sweep + a Mistral model family
     for quant, tps_factor in [("Q4_K_M", 1.0), ("Q5_K_M", 0.9), ("Q8_0", 0.7)]:
-        for users in (1, 2, 4):
+        for users in (1, 2, 4, 8):
             rows.append(
                 _row(
                     gpu_name="TestGPU-24GB",
