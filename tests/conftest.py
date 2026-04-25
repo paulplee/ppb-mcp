@@ -20,6 +20,7 @@ def _row(
     tps: float,
     backend: str = "CUDA",
     org: str = "unsloth",
+    avg_power_w: float | None = 200.0,
 ) -> dict:
     return {
         "model": f"{org}/{model_base}-GGUF/{model_base}-{quant}.gguf",
@@ -46,6 +47,7 @@ def _row(
         "num_prompts": 10 * users,
         "n_predict": 256,
         "throughput_tok_s": tps,
+        "avg_power_w": avg_power_w,
         "avg_ttft_ms": 50.0,
         "p50_ttft_ms": 48.0,
         "p99_ttft_ms": 80.0,
@@ -155,6 +157,7 @@ def _build_fixture_df() -> pd.DataFrame:
             quant="Q4_K_M",
             users=1,
             tps=55.0,
+            avg_power_w=None,
         )
     )
     rows.append(
@@ -165,6 +168,7 @@ def _build_fixture_df() -> pd.DataFrame:
             quant="Q4_K_M",
             users=2,
             tps=82.0,
+            avg_power_w=None,
         )
     )
 
@@ -180,6 +184,39 @@ def fixture_df() -> pd.DataFrame:
 def store(fixture_df: pd.DataFrame) -> Iterator[PPBDataStore]:
     """A PPBDataStore wired with a synthetic loader; installed as the global singleton."""
     s = PPBDataStore(loader=lambda: fixture_df)
+    s.load_sync()
+    PPBDataStore.set_instance(s)
+    try:
+        yield s
+    finally:
+        PPBDataStore.set_instance(None)
+
+
+@pytest.fixture
+def ppb_store(store: PPBDataStore) -> PPBDataStore:
+    """Alias for `store` — used by power/efficiency tests for clarity."""
+    return store
+
+
+@pytest.fixture
+def ppb_store_no_power(fixture_df: pd.DataFrame) -> Iterator[PPBDataStore]:
+    """Same fixture data but with all `avg_power_w` values set to None."""
+    df = fixture_df.copy()
+    df["avg_power_w"] = None
+    s = PPBDataStore(loader=lambda: df)
+    s.load_sync()
+    PPBDataStore.set_instance(s)
+    try:
+        yield s
+    finally:
+        PPBDataStore.set_instance(None)
+
+
+@pytest.fixture
+def ppb_store_empty() -> Iterator[PPBDataStore]:
+    """Empty DataFrame — forces Tier 3 / no-data paths."""
+    empty = pd.DataFrame()
+    s = PPBDataStore(loader=lambda: empty)
     s.load_sync()
     PPBDataStore.set_instance(s)
     try:

@@ -120,6 +120,60 @@ class TestRecommend:
         rec = await recommend_quantization(gpu_vram_gb=24.0, concurrent_users=2, model="Llama-7B")
         assert "nearest tested benchmark" not in rec.reasoning
 
+    @pytest.mark.asyncio
+    async def test_recommend_efficiency_priority_with_power_data(self, ppb_store) -> None:
+        result = await recommend_quantization(
+            gpu_vram_gb=24, concurrent_users=1, priority="efficiency"
+        )
+        assert result.recommended_quantization != "(none)"
+        assert result.estimated_tokens_per_watt is not None
+        assert result.estimated_tokens_per_watt > 0
+
+    @pytest.mark.asyncio
+    async def test_recommend_efficiency_priority_no_power_data(self, ppb_store_no_power) -> None:
+        result = await recommend_quantization(
+            gpu_vram_gb=24, concurrent_users=1, priority="efficiency"
+        )
+        assert result.recommended_quantization != "(none)"
+        assert result.estimated_tokens_per_watt is None
+
+    @pytest.mark.asyncio
+    async def test_recommend_tier3_no_tokens_per_watt(self, ppb_store_empty) -> None:
+        result = await recommend_quantization(
+            gpu_vram_gb=24,
+            concurrent_users=1,
+            model="NonExistentModel-99B",
+            priority="efficiency",
+        )
+        assert result.estimated_tokens_per_watt is None
+
+    @pytest.mark.asyncio
+    async def test_recommend_efficiency_reasoning_mentions_power(self, ppb_store) -> None:
+        result = await recommend_quantization(
+            gpu_vram_gb=24, concurrent_users=1, priority="efficiency"
+        )
+        if result.estimated_tokens_per_watt is not None:
+            assert "tokens/sec/watt" in result.reasoning
+
+
+def test_benchmark_row_power_fields() -> None:
+    from ppb_mcp.models import BenchmarkRow
+
+    row = BenchmarkRow(
+        gpu_name="RTX 4090",
+        vram_gb=24.0,
+        model="Qwen3.5-9B",
+        quantization="Q4_K_M",
+        concurrent_users=1,
+        tokens_per_second=85.0,
+        avg_power_w=245.5,
+        max_power_w=280.0,
+        avg_gpu_temp_c=72.0,
+        max_gpu_temp_c=78.0,
+    )
+    assert row.avg_power_w == 245.5
+    assert row.max_gpu_temp_c == 78.0
+
 
 class TestHeadroom:
     @pytest.mark.asyncio

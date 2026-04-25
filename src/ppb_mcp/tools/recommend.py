@@ -46,10 +46,34 @@ def _rank(df: pd.DataFrame, priority: str) -> pd.DataFrame:
         return df.assign(_score=bpw_series).sort_values("_score", ascending=False)
     if priority == "speed":
         return df.assign(_score=df["throughput_tok_s"]).sort_values("_score", ascending=False)
-    # balance
+    if priority == "efficiency":
+        # tokens_per_watt = throughput / avg_power_w. Rows with no power data score 0.
+        # If NO rows have power data, fall back to balance ranking silently.
+        if "avg_power_w" in df.columns:
+            power = df["avg_power_w"].fillna(0).clip(lower=0)
+            has_power = power > 0
+            tpw = pd.Series(0.0, index=df.index)
+            tpw[has_power] = df.loc[has_power, "throughput_tok_s"] / power[has_power]
+            if tpw.sum() > 0:
+                return df.assign(_score=tpw).sort_values("_score", ascending=False)
+        # Fallback: balance.
+        bpw_n = _normalize(bpw_series)
+        tps_n = _normalize(df["throughput_tok_s"])
+        return df.assign(_score=0.5 * bpw_n + 0.5 * tps_n).sort_values("_score", ascending=False)
+    # balance (default)
     bpw_n = _normalize(bpw_series)
     tps_n = _normalize(df["throughput_tok_s"])
     return df.assign(_score=0.5 * bpw_n + 0.5 * tps_n).sort_values("_score", ascending=False)
+
+
+def _compute_tokens_per_watt(row: pd.Series, tps: float) -> float | None:
+    """Return tokens/sec per watt from a benchmark row, or None if no power data."""
+    if "avg_power_w" not in row.index:
+        return None
+    power = row.get("avg_power_w")
+    if power is None or pd.isna(power) or float(power) <= 0:
+        return None
+    return round(tps / float(power), 3)
 
 
 def _build_reasoning(
@@ -66,23 +90,30 @@ def _build_reasoning(
     tps: float,
     n_rows: int,
     surrogate_gpu: str | None = None,
+    tokens_per_watt: float | None = None,
 ) -> str:
     if tier == 1:
-        return (
+        base = (
             f"{quant} is recommended for your {gpu_label} ({user_vram:.0f} GB) running "
             f"{users} concurrent user{'s' if users != 1 else ''} of {model_label}. "
             f"Based on {n_rows} measured benchmark run{'s' if n_rows != 1 else ''}, "
             f"it uses ~{per_user:.1f} GB per user (~{total:.1f} GB total), "
             f"leaving ~{headroom:.1f} GB headroom and delivering ~{tps:.0f} tokens/sec per request."
         )
+        if tokens_per_watt is not None:
+            base += f" Power efficiency: ~{tokens_per_watt:.2f} tokens/sec/watt."
+        return base
     if tier == 2:
-        return (
+        base = (
             f"{quant} is the likely best choice for your {user_vram:.0f} GB GPU running "
             f"{users} concurrent user{'s' if users != 1 else ''} of {model_label}. "
             f"We don't have direct measurements at this VRAM tier, but the same model+quant tested on "
             f"{surrogate_gpu} delivered ~{tps:.0f} tokens/sec; "
             f"estimated headroom on your card is ~{headroom:.1f} GB."
         )
+        if tokens_per_watt is not None:
+            base += f" Power efficiency: ~{tokens_per_watt:.2f} tokens/sec/watt."
+        return base
     # tier 3
     return (
         f"{quant} is the estimated best choice for a {user_vram:.0f} GB GPU running "
@@ -119,7 +150,7 @@ async def recommend_quantization(
     concurrent_users: int,
     gpu_name: str | None = None,
     model: str | None = None,
-    priority: Literal["quality", "speed", "balance"] = "balance",
+    priority: Literal["quality", "speed", "balance", "efficiency"] = "balance",
 ) -> QuantizationRecommendation:
     """Recommend the best quantization for a given GPU VRAM budget and user count.
 
@@ -136,7 +167,10 @@ async def recommend_quantization(
         gpu_name: Optional GPU name (partial, case-insensitive). If supplied, prefers
             rows matching this exact GPU.
         model: Optional model_base partial match, e.g. "Qwen3.5-9B".
-        priority: "quality" | "speed" | "balance" (default).
+        priority: "quality" | "speed" | "balance" | "efficiency" (default: "balance").
+            "efficiency" ranks by tokens-per-watt — best for always-on or
+            power-constrained setups. Falls back to "balance" when no power
+            data exists for the candidate rows.
     """
     store = PPBDataStore.instance()
     await store.ensure_loaded()
@@ -189,6 +223,7 @@ async def recommend_quantization(
         total_used = per_user * concurrent_users
         headroom = gpu_vram_gb - total_used
         tps = float(top["throughput_tok_s"])
+        tokens_per_watt = _compute_tokens_per_watt(top, tps)
         chosen_model = chosen_model_for_vram
 
         reasoning = _build_reasoning(
@@ -203,6 +238,7 @@ async def recommend_quantization(
             headroom=headroom,
             tps=tps,
             n_rows=n_matches,
+            tokens_per_watt=tokens_per_watt,
         )
         if effective_users_t1 != concurrent_users:
             reasoning += (
@@ -221,6 +257,7 @@ async def recommend_quantization(
             estimated_vram_usage_gb=round(total_used, 2),
             estimated_vram_per_user_gb=round(per_user, 2),
             estimated_tokens_per_second=round(tps, 1),
+            estimated_tokens_per_watt=tokens_per_watt,
             headroom_gb=round(headroom, 2),
             confidence=confidence,
             reasoning=reasoning,
@@ -242,6 +279,7 @@ async def recommend_quantization(
         surrogate_gpu = str(top.get("gpu_name") or "another GPU")
         surrogate_vram = float(top.get(vram_col, gpu_vram_gb))
         tps = float(top["throughput_tok_s"])
+        tokens_per_watt = _compute_tokens_per_watt(top, tps)
 
         per_user_est = estimate_vram_per_user_gb(chosen_model, chosen_quant)
         if per_user_est is None:
@@ -267,6 +305,7 @@ async def recommend_quantization(
                 tps=tps,
                 n_rows=0,
                 surrogate_gpu=f"{surrogate_gpu} ({surrogate_vram:.0f} GB)",
+                tokens_per_watt=tokens_per_watt,
             )
             if effective_users_t2 != concurrent_users:
                 reasoning += (
@@ -282,6 +321,7 @@ async def recommend_quantization(
                 estimated_vram_usage_gb=round(total_est, 2),
                 estimated_vram_per_user_gb=round(per_user_est, 2),
                 estimated_tokens_per_second=round(tps, 1),
+                estimated_tokens_per_watt=tokens_per_watt,
                 headroom_gb=round(headroom, 2),
                 confidence="medium",
                 reasoning=reasoning,
