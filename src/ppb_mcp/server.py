@@ -14,10 +14,15 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ppb_mcp import __version__
 from ppb_mcp.data import PPBDataStore
+from ppb_mcp.tools.compare_quants import compare_quants_qualitative
+from ppb_mcp.tools.context_rot import get_context_rot_breakdown
 from ppb_mcp.tools.headroom import get_gpu_headroom
 from ppb_mcp.tools.list_configs import list_tested_configs
+from ppb_mcp.tools.qualitative_query import query_qualitative_results
+from ppb_mcp.tools.qualitative_summary import get_qualitative_summary
 from ppb_mcp.tools.query import query_ppb_results
 from ppb_mcp.tools.recommend import recommend_quantization
+from ppb_mcp.tools.tool_accuracy import get_tool_accuracy_breakdown
 
 logger = logging.getLogger("ppb_mcp")
 
@@ -79,18 +84,28 @@ app: FastMCP = FastMCP(
     name="Poor Paul's MCP",
     instructions=(
         "Queryable GPU inference benchmarks from Poor Paul's Benchmark (PPB). "
-        "Use recommend_quantization to find the best quantization for your GPU "
-        "and concurrent user count. Data source: https://huggingface.co/datasets/paulplee/ppb-results"
+        "Quantitative tools: recommend_quantization, query_ppb_results, "
+        "get_gpu_headroom, list_tested_configs. "
+        "Qualitative tools: get_qualitative_summary, query_qualitative_results, "
+        "get_context_rot_breakdown, get_tool_accuracy_breakdown, compare_quants_qualitative. "
+        "Data source: https://huggingface.co/datasets/paulplee/ppb-results"
     ),
     version=__version__,
     lifespan=_lifespan,
 )
 
-# Register the four tools.
+# Register the quantitative tools.
 app.tool(list_tested_configs)
 app.tool(query_ppb_results)
 app.tool(recommend_quantization)
 app.tool(get_gpu_headroom)
+
+# Register the qualitative tools.
+app.tool(get_qualitative_summary)
+app.tool(query_qualitative_results)
+app.tool(get_context_rot_breakdown)
+app.tool(get_tool_accuracy_breakdown)
+app.tool(compare_quants_qualitative)
 
 
 # /health endpoint for Docker healthcheck and Lightsail monitoring (HTTP transport only).
@@ -108,6 +123,8 @@ try:
                 "dataset": store.dataset,
                 "dataset_rows": store.row_count(),
                 "last_refreshed": store.get_last_refreshed(),
+                "db_path": str(store._cache.db_path),
+                "cache_row_count": store._cache.row_count(),
             }
         )
 except ImportError:

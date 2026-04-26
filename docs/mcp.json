@@ -11,6 +11,11 @@
     "list_tested_configs",
     "query_ppb_results",
     "recommend_quantization",
-    "get_gpu_headroom"
+    "get_gpu_headroom",
+    "get_qualitative_summary",
+    "query_qualitative_results",
+    "get_context_rot_breakdown",
+    "get_tool_accuracy_breakdown",
+    "compare_quants_qualitative"
   ]
 }

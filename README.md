@@ -16,7 +16,9 @@ Connect any MCP-aware client (Claude Desktop, Cline, Continue, etc.) to ask ques
 - _"Show me every model tested at Q4_K_M on the RTX 5090."_
 - _"Will Llama-13B at Q5_K_M fit on a 24 GB GPU at 4 concurrent users?"_
 
-It exposes **four tools** backed by 30,000+ real benchmark rows:
+It exposes **nine tools** backed by 30,000+ real benchmark rows:
+
+### Quantitative tools
 
 | Tool                     | What it does                                                                      |
 | ------------------------ | --------------------------------------------------------------------------------- |
@@ -24,6 +26,23 @@ It exposes **four tools** backed by 30,000+ real benchmark rows:
 | `query_ppb_results`      | Filters raw benchmark rows by GPU / VRAM / model / quant / users / backend        |
 | `recommend_quantization` | Three-tier empirical-first recommendation engine (high / medium / low confidence) |
 | `get_gpu_headroom`       | Sanity-checks a (gpu, model, quant, users) configuration for VRAM headroom        |
+
+### Qualitative tools
+
+| Tool                          | What it does                                                                          |
+| ----------------------------- | ------------------------------------------------------------------------------------- |
+| `get_qualitative_summary`     | All available qualitative scores (context-rot, tool accuracy, quality, MT-Bench)      |
+| `query_qualitative_results`   | Filter qualitative rows by phase, model, quant, GPU, or minimum score thresholds      |
+| `get_context_rot_breakdown`   | Long-context recall scores by length, depth, and needle type                          |
+| `get_tool_accuracy_breakdown` | Tool-call accuracy: selection, parameters, hallucination rate, parse success          |
+| `compare_quants_qualitative`  | Side-by-side qualitative comparison across quantizations with deterministic insight   |
+
+### Data & caching
+
+Benchmark rows are mirrored into a local SQLite cache (`./ppb_cache.db` by
+default; override with `PPB_DB_PATH`). On startup the server loads from
+SQLite and only contacts HuggingFace when the dataset's git commit SHA
+has changed — making subsequent restarts fast and offline-friendly.
 
 ## Install
 

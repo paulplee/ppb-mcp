@@ -104,3 +104,8 @@ scratch/
 *.bak
 *.tmp
 
+# ── SQLite runtime cache ──────────────────────────────────────────────────────
+ppb_cache.db
+ppb_cache.db-shm
+ppb_cache.db-wal
+

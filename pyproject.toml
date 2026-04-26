@@ -62,3 +62,11 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]
 ignore = ["E501"]
+
+# Runtime environment variables:
+# PPB_DB_PATH              Path to SQLite cache db (default: ./ppb_cache.db)
+# HF_DATASET               HuggingFace dataset repo (default: paulplee/ppb-results)
+# REFRESH_INTERVAL_HOURS   Hours between HF sync checks (default: 1)
+# MCP_TRANSPORT            stdio | streamable-http (default: streamable-http)
+# PORT                     HTTP port (default: 9933)
+# LOG_LEVEL                Python logging level (default: INFO)

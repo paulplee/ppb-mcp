@@ -223,3 +223,94 @@ def ppb_store_empty() -> Iterator[PPBDataStore]:
         yield s
     finally:
         PPBDataStore.set_instance(None)
+
+
+@pytest.fixture
+def sample_qualitative_df() -> pd.DataFrame:
+    """Minimal qualitative DataFrame matching the real schema."""
+    import json
+
+    return pd.DataFrame(
+        [
+            {
+                "run_type": "qualitative",
+                "runner_type": "context-rot",
+                "gpu_name": "Apple M4 Pro",
+                "model_base": "Qwen3.5-0.8B",
+                "quant": "Q4_K_M",
+                "suite_id": "test-suite-001",
+                "benchmark_version": "0.1.0",
+                "context_rot_score": 0.45,
+                "context_rot_accuracy_by_length": json.dumps(
+                    {
+                        "4096": 0.9,
+                        "8192": 0.7,
+                        "16384": 0.5,
+                        "32768": 0.3,
+                        "65536": 0.1,
+                        "131072": 0.0,
+                    }
+                ),
+                "context_rot_accuracy_by_depth": json.dumps(
+                    {"10": 0.6, "30": 0.5, "50": 0.4, "70": 0.3, "90": 0.2}
+                ),
+                "context_rot_accuracy_by_needle": json.dumps(
+                    {"code": 1.0, "name": 0.5, "constellation": 0.0}
+                ),
+                "cases_skipped_context": 5,
+            },
+            {
+                "run_type": "qualitative",
+                "runner_type": "tool-accuracy",
+                "gpu_name": "Apple M4 Pro",
+                "model_base": "Qwen3.5-0.8B",
+                "quant": "Q4_K_M",
+                "suite_id": "test-suite-001",
+                "benchmark_version": "0.1.0",
+                "tool_selection_accuracy": 0.22,
+                "parameter_accuracy": 0.22,
+                "parameter_hallucination_rate": 0.01,
+                "parse_success_rate": 0.40,
+                "no_call_accuracy": 0.80,
+                "overall_tool_accuracy": 0.22,
+            },
+            {
+                "run_type": "qualitative",
+                "runner_type": "tool-accuracy",
+                "gpu_name": "Apple M4 Pro",
+                "model_base": "Qwen3.5-0.8B",
+                "quant": "Q4_0",
+                "suite_id": "test-suite-001",
+                "benchmark_version": "0.1.0",
+                "tool_selection_accuracy": 0.45,
+                "parameter_accuracy": 0.45,
+                "parameter_hallucination_rate": 0.0,
+                "parse_success_rate": 0.55,
+                "no_call_accuracy": 0.82,
+                "overall_tool_accuracy": 0.45,
+            },
+            {
+                "run_type": "qualitative",
+                "runner_type": "multiturn",
+                "gpu_name": "Apple M4 Pro",
+                "model_base": "Qwen3.5-0.8B",
+                "quant": "Q4_K_M",
+                "suite_id": "test-suite-001",
+                "benchmark_version": "0.1.0",
+                "mt_bench_score": 8.2,
+                "cases_evaluated": 79,
+                "memory_accuracy": None,
+            },
+        ]
+    )
+
+
+@pytest.fixture
+def qualitative_store(sample_qualitative_df: pd.DataFrame) -> Iterator[PPBDataStore]:
+    s = PPBDataStore(loader=lambda: sample_qualitative_df)
+    s.load_sync()
+    PPBDataStore.set_instance(s)
+    try:
+        yield s
+    finally:
+        PPBDataStore.set_instance(None)
