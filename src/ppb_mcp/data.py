@@ -234,26 +234,23 @@ class PPBDataStore:
             await anyio.to_thread.run_sync(self.load_sync)
 
     async def refresh(self) -> bool:
-        """Force a refresh. Returns True on success; False (and keeps stale cache) on failure."""
+        """Force an incremental refresh. Returns True on success; False on failure (stale cache kept)."""
         try:
             if self._loader is not None:
                 new_df = await anyio.to_thread.run_sync(self._loader)
+                async with self._lock:
+                    self._validate_schema(new_df)
+                    self._df = new_df
+                    self._last_refreshed = datetime.now(UTC).isoformat()
             else:
                 await anyio.to_thread.run_sync(
-                    lambda: self._incremental_sync(force_redownload=True)
+                    lambda: self._incremental_sync(force_redownload=False)
                 )
-                new_df = self._df
+                # _incremental_sync already updated self._df and self._last_refreshed safely.
         except (HfHubHTTPError, OSError, RuntimeError, ValueError) as exc:
             logger.error("Dataset refresh failed; serving stale cache. Error: %s", exc)
             return False
-        async with self._lock:
-            self._validate_schema(new_df)
-            self._df = new_df
-            if self._loader is not None:
-                self._last_refreshed = datetime.now(UTC).isoformat()
-            else:
-                self._last_refreshed = self._cache.last_synced_at()
-        logger.info("Refreshed PPB dataset: shape=%s", new_df.shape)
+        logger.info("Refreshed PPB dataset: shape=%s", self._df.shape)
         return True
 
     async def run_refresh_loop(self) -> None:

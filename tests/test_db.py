@@ -65,6 +65,13 @@ def test_is_fresh_false_when_empty(tmp_cache):
     assert tmp_cache.is_fresh(1.0) is False
 
 
+def test_is_fresh_true_after_sync(tmp_cache):
+    """is_fresh() returns True right after a sync and False at zero tolerance."""
+    tmp_cache.write_sync_log(100, 5, 1.5)
+    assert tmp_cache.is_fresh(1.0) is True
+    assert tmp_cache.is_fresh(0.0) is False
+
+
 def test_shard_meta_roundtrip(tmp_cache):
     tmp_cache.update_shard_meta("shard_001.jsonl", "abc123")
     assert tmp_cache.get_shard_etag("shard_001.jsonl") == "abc123"

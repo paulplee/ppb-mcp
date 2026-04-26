@@ -168,7 +168,6 @@ class SQLiteCache:
             for raw in rows:
                 row = _clean_for_json(raw)
                 rid = _row_id(row)
-                exists = con.execute("SELECT 1 FROM rows WHERE row_id = ?", (rid,)).fetchone()
                 blob = json.dumps(row, default=_json_default)
                 con.execute(
                     "INSERT OR REPLACE INTO rows("
@@ -188,8 +187,7 @@ class SQLiteCache:
                         now,
                     ),
                 )
-                if not exists:
-                    added += 1
+                added += con.execute("SELECT changes()").fetchone()[0]
             con.commit()
         logger.debug("upserted %d rows from %s (%d new)", len(rows), shard_filename, added)
         return added
