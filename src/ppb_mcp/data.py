@@ -153,9 +153,7 @@ class PPBDataStore:
             info = api.dataset_info(self.dataset)
             remote_commit = getattr(info, "sha", None)
         except Exception as exc:  # pragma: no cover - network fallback
-            logger.warning(
-                "Could not fetch dataset_info; proceeding without commit check: %s", exc
-            )
+            logger.warning("Could not fetch dataset_info; proceeding without commit check: %s", exc)
             remote_commit = None
 
         stored_commit = self._cache.get_shard_etag(_COMMIT_KEY)

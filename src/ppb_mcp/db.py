@@ -168,9 +168,7 @@ class SQLiteCache:
             for raw in rows:
                 row = _clean_for_json(raw)
                 rid = _row_id(row)
-                exists = con.execute(
-                    "SELECT 1 FROM rows WHERE row_id = ?", (rid,)
-                ).fetchone()
+                exists = con.execute("SELECT 1 FROM rows WHERE row_id = ?", (rid,)).fetchone()
                 blob = json.dumps(row, default=_json_default)
                 con.execute(
                     "INSERT OR REPLACE INTO rows("
@@ -196,9 +194,7 @@ class SQLiteCache:
         logger.debug("upserted %d rows from %s (%d new)", len(rows), shard_filename, added)
         return added
 
-    def write_sync_log(
-        self, rows_added: int, shards_synced: int, duration_s: float
-    ) -> None:
+    def write_sync_log(self, rows_added: int, shards_synced: int, duration_s: float) -> None:
         now = datetime.now(UTC).isoformat()
         with self._connect() as con:
             con.execute(
@@ -224,7 +220,5 @@ class SQLiteCache:
 
     def last_synced_at(self) -> str | None:
         with self._connect() as con:
-            row = con.execute(
-                "SELECT synced_at FROM sync_log ORDER BY id DESC LIMIT 1"
-            ).fetchone()
+            row = con.execute("SELECT synced_at FROM sync_log ORDER BY id DESC LIMIT 1").fetchone()
         return row[0] if row else None

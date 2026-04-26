@@ -28,9 +28,7 @@ async def get_qualitative_summary(
     await store.ensure_loaded()
     df = await store.get_df()
 
-    sub = filter_qualitative(
-        df, model=model, quantization=quantization, gpu_name=gpu_name
-    )
+    sub = filter_qualitative(df, model=model, quantization=quantization, gpu_name=gpu_name)
 
     if sub.empty:
         return QualitativeSummary(
@@ -63,9 +61,7 @@ async def get_qualitative_summary(
             return None
         return opt_float(first_non_null(sub[col]))
 
-    suite_id = (
-        opt_str(first_non_null(sub["suite_id"])) if "suite_id" in sub.columns else None
-    )
+    suite_id = opt_str(first_non_null(sub["suite_id"])) if "suite_id" in sub.columns else None
     bench_v = (
         opt_str(first_non_null(sub["benchmark_version"]))
         if "benchmark_version" in sub.columns

@@ -29,13 +29,13 @@ It exposes **nine tools** backed by 30,000+ real benchmark rows:
 
 ### Qualitative tools
 
-| Tool                          | What it does                                                                          |
-| ----------------------------- | ------------------------------------------------------------------------------------- |
-| `get_qualitative_summary`     | All available qualitative scores (context-rot, tool accuracy, quality, MT-Bench)      |
-| `query_qualitative_results`   | Filter qualitative rows by phase, model, quant, GPU, or minimum score thresholds      |
-| `get_context_rot_breakdown`   | Long-context recall scores by length, depth, and needle type                          |
-| `get_tool_accuracy_breakdown` | Tool-call accuracy: selection, parameters, hallucination rate, parse success          |
-| `compare_quants_qualitative`  | Side-by-side qualitative comparison across quantizations with deterministic insight   |
+| Tool                          | What it does                                                                        |
+| ----------------------------- | ----------------------------------------------------------------------------------- |
+| `get_qualitative_summary`     | All available qualitative scores (context-rot, tool accuracy, quality, MT-Bench)    |
+| `query_qualitative_results`   | Filter qualitative rows by phase, model, quant, GPU, or minimum score thresholds    |
+| `get_context_rot_breakdown`   | Long-context recall scores by length, depth, and needle type                        |
+| `get_tool_accuracy_breakdown` | Tool-call accuracy: selection, parameters, hallucination rate, parse success        |
+| `compare_quants_qualitative`  | Side-by-side qualitative comparison across quantizations with deterministic insight |
 
 ### Data & caching
 

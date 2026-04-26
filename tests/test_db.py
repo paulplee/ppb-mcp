@@ -19,10 +19,7 @@ def tmp_cache(tmp_path):
 def test_setup_creates_tables(tmp_cache, tmp_path):
     con = sqlite3.connect(tmp_path / "test.db")
     tables = {
-        r[0]
-        for r in con.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        ).fetchall()
+        r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
     }
     assert {"rows", "shard_meta", "sync_log"}.issubset(tables)
     con.close()
