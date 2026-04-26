@@ -34,7 +34,7 @@ ENV MCP_TRANSPORT=streamable-http \
 
 EXPOSE 9933
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=300s --retries=3 \
     CMD curl -fsS http://0.0.0.0:9933/health || exit 1
 
 CMD ["ppb-mcp"]
