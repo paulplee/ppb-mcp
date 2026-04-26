@@ -31,6 +31,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import anyio
+import anyio.to_thread
 import pandas as pd
 from huggingface_hub import HfApi, hf_hub_download
 from huggingface_hub.errors import HfHubHTTPError
