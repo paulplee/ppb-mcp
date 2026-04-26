@@ -29,7 +29,8 @@ USER ppbuser
 ENV MCP_TRANSPORT=streamable-http \
     HOST=0.0.0.0 \
     PORT=9933 \
-    LOG_LEVEL=INFO
+    LOG_LEVEL=INFO \
+    PPB_DB_PATH=/data/ppb_cache.db
 
 EXPOSE 9933
 
