@@ -94,3 +94,32 @@ def estimate_vram_per_user_gb(model_name: str, quant: str) -> float | None:
         return None
     bpw = bits_per_weight(quant)
     return (params_b * bpw / 8.0) * 1.15
+
+
+# Approximate KV cache GB per concurrent user at n_ctx=8192 (conservative upper bound).
+# Derivation: 4 × num_layers × num_kv_heads × head_dim × n_ctx × 2 bytes (GQA, fp16) / 1e9
+# Using 0.25 GB/B is deliberately conservative (overestimates) to err on the safe side.
+_KV_CACHE_GB_PER_B_PARAMS: float = 0.25  # at n_ctx=8192; intentional overestimate for safety
+
+
+def estimate_total_vram_gb(
+    model_name: str,
+    quant: str,
+    concurrent_users: int,
+    n_ctx: int = 8192,
+) -> float | None:
+    """Two-term VRAM estimate: fixed weights + linear KV cache per user.
+
+    Unlike estimate_vram_per_user_gb × N (which over-counts by replicating weights),
+    this correctly models shared weights plus per-user KV cache scaling.
+    Returns None if the parameter count cannot be parsed from model_name.
+    """
+    params_b = extract_params_billions(model_name)
+    if params_b is None:
+        return None
+    bpw = bits_per_weight(quant)
+    weights_gb = params_b * bpw / 8.0 * 1.1  # 10% runtime overhead on weights
+    # KV cache scales with n_ctx; 8192 is the reference baseline
+    ctx_scale = n_ctx / 8192.0
+    kv_per_user = params_b * _KV_CACHE_GB_PER_B_PARAMS * ctx_scale
+    return weights_gb + kv_per_user * concurrent_users

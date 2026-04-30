@@ -8,9 +8,23 @@ import pandas as pd
 
 from ppb_mcp.data import PPBDataStore
 from ppb_mcp.models import QuantizationRecommendation
-from ppb_mcp.tools._vram import bits_per_weight, estimate_vram_per_user_gb
+from ppb_mcp.tools._filters import is_blank
+from ppb_mcp.tools._vram import bits_per_weight, estimate_total_vram_gb, estimate_vram_per_user_gb
 
 HEADROOM_FRACTION = 0.90  # leave 10% headroom for OS / driver overhead
+
+
+def _filter_viable(ranked: pd.DataFrame, gpu_vram_gb: float, users: int) -> pd.DataFrame:
+    """Drop candidates whose two-term VRAM estimate exceeds the GPU budget."""
+    def fits(row: pd.Series) -> bool:
+        model = str(row.get("model_base") or "")
+        quant = str(row.get("quant") or "")
+        total = estimate_total_vram_gb(model, quant, users)
+        if total is None:
+            return True  # can't rule out; keep and note uncertainty
+        return total <= (gpu_vram_gb * HEADROOM_FRACTION)
+    mask = ranked.apply(fits, axis=1)
+    return ranked[mask]
 
 
 def _floor_concurrency(df: pd.DataFrame, requested: int) -> int:
@@ -154,12 +168,20 @@ async def recommend_quantization(
 ) -> QuantizationRecommendation:
     """Recommend the best quantization for a given GPU VRAM budget and user count.
 
+    USE THIS TOOL when a user asks "what quantization fits in X GB?" or "what's the
+    best quant for Y concurrent users on Z GPU?".
+
     Three-tier empirical-first algorithm:
       • Tier 1 (high confidence): direct benchmark rows on a GPU at-or-below the user's
         VRAM budget that were measured at the requested concurrent_users.
       • Tier 2 (medium): same (model_base, quant) tested on a different GPU at the
         requested user count — uses that throughput; scales headroom against user's VRAM.
-      • Tier 3 (low): formula-only extrapolation (params × bits_per_weight / 8 × 1.15).
+      • Tier 3 (low): formula-only extrapolation (params × bits_per_weight / 8 × 1.1).
+
+    IMPORTANT — headroom_gb will always be >= 0. Any candidate that doesn't physically
+    fit (after applying the two-term VRAM formula) is excluded before ranking.
+
+    NOTE: To omit a filter, EXCLUDE the parameter entirely. Do NOT pass "null".
 
     Args:
         gpu_vram_gb: Total VRAM available on the GPU in GB.
@@ -189,7 +211,7 @@ async def recommend_quantization(
 
     # Apply model filter (partial, case-insensitive on model_base).
     base = df
-    if model and "model_base" in base.columns:
+    if not is_blank(model) and "model_base" in base.columns:
         base = base[base["model_base"].astype(str).str.contains(model, case=False, na=False)]
 
     # Drop rows missing essentials.
@@ -200,7 +222,7 @@ async def recommend_quantization(
     tier1 = base.copy()
     if vram_col in tier1.columns:
         tier1 = tier1[tier1[vram_col].fillna(0) <= gpu_vram_gb]
-    if gpu_name and "gpu_name" in tier1.columns:
+    if not is_blank(gpu_name) and "gpu_name" in tier1.columns:
         tier1 = tier1[tier1["gpu_name"].astype(str).str.contains(gpu_name, case=False, na=False)]
     effective_users_t1 = _floor_concurrency(tier1, concurrent_users)
     if "concurrent_users" in tier1.columns:
@@ -208,61 +230,75 @@ async def recommend_quantization(
 
     if not tier1.empty:
         ranked = _rank(tier1, priority)
-        top = ranked.iloc[0]
-        # Pick best row per quant for alternatives.
-        best_per_quant = ranked.drop_duplicates(subset=["quant"], keep="first")
-        chosen_quant = str(top["quant"])
-        n_matches = int((tier1["quant"] == chosen_quant).sum())
-        confidence = "high" if n_matches >= 3 else "medium"
+        ranked = _filter_viable(ranked, gpu_vram_gb, concurrent_users)
+        if not ranked.empty:
+            top = ranked.iloc[0]
+            # Pick best row per quant for alternatives.
+            best_per_quant = ranked.drop_duplicates(subset=["quant"], keep="first")
+            chosen_quant = str(top["quant"])
+            n_matches = int((tier1["quant"] == chosen_quant).sum())
+            confidence = "high" if n_matches >= 3 else "medium"
 
-        chosen_model_for_vram = str(top.get("model_base") or model_label)
-        per_user = estimate_vram_per_user_gb(chosen_model_for_vram, chosen_quant)
-        if per_user is None:
-            # Formula fallback: distribute the GPU's total VRAM across users.
-            per_user = float(top.get(vram_col, gpu_vram_gb)) / max(concurrent_users, 1)
-        total_used = per_user * concurrent_users
-        headroom = gpu_vram_gb - total_used
-        tps = float(top["throughput_tok_s"])
-        tokens_per_watt = _compute_tokens_per_watt(top, tps)
-        chosen_model = chosen_model_for_vram
+            chosen_model_for_vram = str(top.get("model_base") or model_label)
+            # Two-term formula: fixed weights + per-user KV cache (does not replicate weights)
+            total_used = estimate_total_vram_gb(chosen_model_for_vram, chosen_quant, concurrent_users)
+            if total_used is None:
+                # Formula fallback: distribute the GPU's total VRAM across users.
+                per_user = float(top.get(vram_col, gpu_vram_gb)) / max(concurrent_users, 1)
+                total_used = per_user * concurrent_users
+            else:
+                per_user = estimate_vram_per_user_gb(chosen_model_for_vram, chosen_quant) or (
+                    total_used / max(concurrent_users, 1)
+                )
+            headroom = gpu_vram_gb - total_used
+            tps = float(top["throughput_tok_s"])
+            tokens_per_watt = _compute_tokens_per_watt(top, tps)
+            chosen_model = chosen_model_for_vram
 
-        reasoning = _build_reasoning(
-            tier=1,
-            quant=chosen_quant,
-            gpu_label=str(top.get("gpu_name") or gpu_label),
-            user_vram=gpu_vram_gb,
-            users=concurrent_users,
-            model_label=chosen_model,
-            per_user=per_user,
-            total=total_used,
-            headroom=headroom,
-            tps=tps,
-            n_rows=n_matches,
-            tokens_per_watt=tokens_per_watt,
-        )
-        if effective_users_t1 != concurrent_users:
-            reasoning += (
-                f" (Note: no data for {concurrent_users} concurrent users; "
-                f"recommendation uses {effective_users_t1}-user measurements as the "
-                "nearest tested benchmark.)"
+            # Fix GPU label: distinguish benchmark GPU from user's GPU
+            benchmark_gpu = str(top.get("gpu_name") or gpu_label)
+            if benchmark_gpu.lower() != gpu_label.lower():
+                gpu_display = f"{gpu_label} (benchmark from {benchmark_gpu})"
+            else:
+                gpu_display = gpu_label
+
+            reasoning = _build_reasoning(
+                tier=1,
+                quant=chosen_quant,
+                gpu_label=gpu_display,
+                user_vram=gpu_vram_gb,
+                users=concurrent_users,
+                model_label=chosen_model,
+                per_user=per_user,
+                total=total_used,
+                headroom=headroom,
+                tps=tps,
+                n_rows=n_matches,
+                tokens_per_watt=tokens_per_watt,
             )
-        alternatives = [str(q) for q in best_per_quant["quant"].tolist() if str(q) != chosen_quant][
-            :2
-        ]
-        return QuantizationRecommendation(
-            recommended_quantization=chosen_quant,
-            model=chosen_model,
-            gpu_vram_gb=gpu_vram_gb,
-            concurrent_users=concurrent_users,
-            estimated_vram_usage_gb=round(total_used, 2),
-            estimated_vram_per_user_gb=round(per_user, 2),
-            estimated_tokens_per_second=round(tps, 1),
-            estimated_tokens_per_watt=tokens_per_watt,
-            headroom_gb=round(headroom, 2),
-            confidence=confidence,
-            reasoning=reasoning,
-            alternatives=alternatives,
-        )
+            if effective_users_t1 != concurrent_users:
+                reasoning += (
+                    f" (Note: no data for {concurrent_users} concurrent users; "
+                    f"recommendation uses {effective_users_t1}-user measurements as the "
+                    "nearest tested benchmark.)"
+                )
+            alternatives = [str(q) for q in best_per_quant["quant"].tolist() if str(q) != chosen_quant][
+                :2
+            ]
+            return QuantizationRecommendation(
+                recommended_quantization=chosen_quant,
+                model=chosen_model,
+                gpu_vram_gb=gpu_vram_gb,
+                concurrent_users=concurrent_users,
+                estimated_vram_usage_gb=round(total_used, 2),
+                estimated_vram_per_user_gb=round(per_user, 2),
+                estimated_tokens_per_second=round(tps, 1),
+                estimated_tokens_per_watt=tokens_per_watt,
+                headroom_gb=round(headroom, 2),
+                confidence=confidence,
+                reasoning=reasoning,
+                alternatives=alternatives,
+            )
 
     # ── Tier 2: empirical-near (any GPU, requested users, same model+quant universe) ──
     tier2 = base.copy()
@@ -273,20 +309,25 @@ async def recommend_quantization(
     if not tier2.empty:
         # For each (model_base, quant) pair, take the best surrogate row by priority.
         ranked = _rank(tier2, priority)
-        top = ranked.iloc[0]
-        chosen_quant = str(top["quant"])
-        chosen_model = str(top.get("model_base") or model_label)
-        surrogate_gpu = str(top.get("gpu_name") or "another GPU")
-        surrogate_vram = float(top.get(vram_col, gpu_vram_gb))
-        tps = float(top["throughput_tok_s"])
-        tokens_per_watt = _compute_tokens_per_watt(top, tps)
+        ranked = _filter_viable(ranked, gpu_vram_gb, concurrent_users)
+        if not ranked.empty:
+            top = ranked.iloc[0]
+            chosen_quant = str(top["quant"])
+            chosen_model = str(top.get("model_base") or model_label)
+            surrogate_gpu = str(top.get("gpu_name") or "another GPU")
+            surrogate_vram = float(top.get(vram_col, gpu_vram_gb))
+            tps = float(top["throughput_tok_s"])
+            tokens_per_watt = _compute_tokens_per_watt(top, tps)
 
-        per_user_est = estimate_vram_per_user_gb(chosen_model, chosen_quant)
-        if per_user_est is None:
-            per_user_est = surrogate_vram / max(concurrent_users, 1)
-        total_est = per_user_est * concurrent_users
-        # Skip if the formula says it doesn't fit at all on the user's GPU.
-        if total_est <= gpu_vram_gb * HEADROOM_FRACTION:
+            # Two-term formula for total VRAM; fall back to old estimate if needed
+            total_est = estimate_total_vram_gb(chosen_model, chosen_quant, concurrent_users)
+            if total_est is None:
+                per_user_est = surrogate_vram / max(concurrent_users, 1)
+                total_est = per_user_est * concurrent_users
+            else:
+                per_user_est = estimate_vram_per_user_gb(chosen_model, chosen_quant) or (
+                    total_est / max(concurrent_users, 1)
+                )
             headroom = gpu_vram_gb - total_est
             best_per_quant = ranked.drop_duplicates(subset=["quant"], keep="first")
             alternatives = [
@@ -337,14 +378,19 @@ async def recommend_quantization(
             f"No benchmark data fits a {gpu_vram_gb:.0f} GB GPU at {concurrent_users} concurrent users, "
             "and no specific model was supplied to extrapolate from.",
         )
-    candidates: list[tuple[str, float, float]] = []  # (quant, per_user, bpw)
+    candidates: list[tuple[str, float, float, float]] = []  # (quant, per_user, total, bpw)
     for quant in sorted(set(base["quant"].dropna().astype(str).tolist()) or {"Q4_K_M"}):
-        per_user = estimate_vram_per_user_gb(model, quant)
-        if per_user is None:
-            continue
-        total = per_user * concurrent_users
+        total = estimate_total_vram_gb(model, quant, concurrent_users)
+        if total is None:
+            # Fallback to old formula if params unparseable
+            per_user = estimate_vram_per_user_gb(model, quant)
+            if per_user is None:
+                continue
+            total = per_user * concurrent_users
+        else:
+            per_user = estimate_vram_per_user_gb(model, quant) or (total / max(concurrent_users, 1))
         if total <= gpu_vram_gb * HEADROOM_FRACTION:
-            candidates.append((quant, per_user, bits_per_weight(quant)))
+            candidates.append((quant, per_user, total, bits_per_weight(quant)))
 
     if not candidates:
         return _empty_recommendation(
@@ -357,15 +403,14 @@ async def recommend_quantization(
 
     # Rank by priority on formula-derived values.
     if priority == "quality":
-        candidates.sort(key=lambda c: c[2], reverse=True)
+        candidates.sort(key=lambda c: c[3], reverse=True)
     elif priority == "speed":
         # Smaller quants are usually faster; rank by lower bpw first.
-        candidates.sort(key=lambda c: c[2])
+        candidates.sort(key=lambda c: c[3])
     else:  # balance — prefer middle bpw closest to 4.5
-        candidates.sort(key=lambda c: abs(c[2] - 4.5))
+        candidates.sort(key=lambda c: abs(c[3] - 4.5))
 
-    chosen_quant, per_user, _ = candidates[0]
-    total = per_user * concurrent_users
+    chosen_quant, per_user, total, _ = candidates[0]
     headroom = gpu_vram_gb - total
     # Throughput is unknown — estimate as 100 tok/s as a placeholder; downgrade lang accordingly.
     tps_estimate = 100.0

@@ -14,6 +14,9 @@ async def get_tool_accuracy_breakdown(
 ) -> ToolAccuracyBreakdown:
     """Get detailed tool-call accuracy metrics for a model+quant.
 
+    USE THIS TOOL when a user asks whether a model can reliably call tools, produce
+    valid JSON, or select the correct function with correct parameters.
+
     Measures whether the model produces valid JSON tool calls with correct
     tool selection and parameter values. Key metrics:
     - tool_selection_accuracy: correct tool name chosen
@@ -21,6 +24,9 @@ async def get_tool_accuracy_breakdown(
     - parameter_hallucination_rate: fraction of responses with invented params
     - overall_tool_accuracy: geometric mean of selection × parameter accuracy
       (collapses to 0 if either is 0)
+
+    NOTE: Do NOT pass "null" for gpu_name — omit it entirely if unspecified.
+    Qualitative data is sparse; many (model, quant, gpu) combos have no data yet.
 
     Args:
         model: Partial match on model name.

@@ -119,6 +119,20 @@ class PPBDataStore:
                 "Required columns missing from dataset: %s. Continuing with available columns.",
                 sorted(missing),
             )
+        # Detect rows where a known GPU reports impossibly high VRAM.
+        vram_col = "gpu_total_vram_gb" if "gpu_total_vram_gb" in df.columns else "gpu_vram_gb"
+        if vram_col in df.columns and "gpu_name" in df.columns:
+            suspect = df[
+                (df[vram_col].fillna(0) > 200)
+                & ~df["gpu_name"].astype(str).str.contains(
+                    "GB10|Grace|H100|A100", case=False, na=False
+                )
+            ]
+            if not suspect.empty:
+                logger.warning(
+                    "Found %d rows with suspiciously high VRAM (>200 GB) for non-datacenter GPUs.",
+                    len(suspect),
+                )
 
     # ── loading ────────────────────────────────────────────────────────────
     def load_sync(self, *, force_redownload: bool = False) -> None:
@@ -286,6 +300,11 @@ class PPBDataStore:
         if "quant" not in self._df.columns:
             return []
         return sorted(self._df["quant"].dropna().unique().tolist())
+
+    def get_all_runner_types(self) -> list[str]:
+        if "runner_type" not in self._df.columns:
+            return []
+        return sorted(self._df["runner_type"].dropna().unique().tolist())
 
     def get_last_refreshed(self) -> str:
         return self._last_refreshed or "never"

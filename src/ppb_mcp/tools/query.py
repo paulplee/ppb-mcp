@@ -7,6 +7,7 @@ import pandas as pd
 
 from ppb_mcp.data import PPBDataStore
 from ppb_mcp.models import BenchmarkRow, QueryResult
+from ppb_mcp.tools._filters import is_blank
 
 
 def _row_to_model(r: pd.Series) -> BenchmarkRow:
@@ -49,6 +50,7 @@ def _row_to_model(r: pd.Series) -> BenchmarkRow:
         p50_itl_ms=_opt_float("p50_itl_ms"),
         n_ctx=_opt_int("n_ctx"),
         backend=_opt_str("backends"),
+        runner_type=_opt_str("runner_type"),
         submitter=_opt_str("submitter"),
         timestamp=_opt_str("timestamp"),
     )
@@ -63,23 +65,26 @@ def _apply_filters(
     model: str | None,
     quantization: str | None,
     backend: str | None,
+    runner_type: str | None,
     concurrent_users: int | None,
 ) -> pd.DataFrame:
     out = df
-    if gpu_name and "gpu_name" in out.columns:
-        out = out[out["gpu_name"].astype(str).str.contains(gpu_name, case=False, na=False)]
+    if not is_blank(gpu_name) and "gpu_name" in out.columns:
+        out = out[out["gpu_name"].astype(str).str.contains(gpu_name, case=False, na=False)]  # type: ignore[arg-type]
     vram_col = "gpu_total_vram_gb" if "gpu_total_vram_gb" in out.columns else "gpu_vram_gb"
     if vram_col in out.columns:
         if vram_gb_min is not None:
             out = out[out[vram_col].fillna(-1) >= vram_gb_min]
         if vram_gb_max is not None:
             out = out[out[vram_col].fillna(float("inf")) <= vram_gb_max]
-    if model and "model_base" in out.columns:
-        out = out[out["model_base"].astype(str).str.contains(model, case=False, na=False)]
-    if quantization and "quant" in out.columns:
+    if not is_blank(model) and "model_base" in out.columns:
+        out = out[out["model_base"].astype(str).str.contains(model, case=False, na=False)]  # type: ignore[arg-type]
+    if not is_blank(quantization) and "quant" in out.columns:
         out = out[out["quant"] == quantization]
-    if backend and "backends" in out.columns:
-        out = out[out["backends"].astype(str).str.contains(backend, case=False, na=False)]
+    if not is_blank(backend) and "backends" in out.columns:
+        out = out[out["backends"].astype(str).str.contains(backend, case=False, na=False)]  # type: ignore[arg-type]
+    if not is_blank(runner_type) and "runner_type" in out.columns:
+        out = out[out["runner_type"].astype(str).str.contains(runner_type, case=False, na=False)]  # type: ignore[arg-type]
     if concurrent_users is not None and "concurrent_users" in out.columns:
         out = out[out["concurrent_users"] == concurrent_users]
     return out
@@ -101,10 +106,21 @@ async def query_ppb_results(
     model: str | None = None,
     quantization: str | None = None,
     backend: str | None = None,
+    runner_type: str | None = None,
     concurrent_users: int | None = None,
     limit: int = 50,
 ) -> QueryResult:
     """Filter raw benchmark rows from PPB.
+
+    USE THIS TOOL when you need raw throughput numbers, TTFT, inter-token latency,
+    or VRAM figures for a specific GPU, model, or quantization.
+
+    IMPORTANT — always filter by runner_type when comparing speeds:
+      - "llama-bench"            → raw throughput (tok/s), no concurrency
+      - "llama-server-loadtest"  → real concurrent-user throughput (lower numbers, more realistic)
+
+    NOTE: To omit a filter, EXCLUDE the parameter entirely. Do NOT pass the string
+    "null" — it will not match any GPU and returns zero results.
 
     All filters are optional and AND-combined. String filters are case-insensitive
     partial matches except `quantization` (exact). When called with no filters,
@@ -118,8 +134,15 @@ async def query_ppb_results(
         model: Partial match on model_base, e.g. "Qwen3.5-9B".
         quantization: Exact match on quantization label, e.g. "Q4_K_M".
         backend: Partial match on backend, e.g. "CUDA" or "Metal".
+        runner_type: Filter by benchmark runner. Use "llama-bench" for raw throughput,
+            "llama-server-loadtest" for real concurrent-user throughput (these numbers are
+            NOT comparable — always filter by runner_type when comparing speeds).
         concurrent_users: Exact match on concurrent_users (1, 2, 4, 8, 16, or 32).
         limit: Max rows to return (1–500).
+
+    Example calls:
+        query_ppb_results(gpu_name="Apple M4 Pro", model="Qwen3.5-27B", runner_type="llama-server-loadtest")
+        query_ppb_results(model="Qwen3.5-9B", quantization="Q4_K_M", concurrent_users=4)
     """
     limit = max(1, min(int(limit), 500))
     store = PPBDataStore.instance()
@@ -129,7 +152,7 @@ async def query_ppb_results(
     total = len(df)
     no_filters = all(
         v is None
-        for v in (gpu_name, vram_gb_min, vram_gb_max, model, quantization, backend, concurrent_users)
+        for v in (gpu_name, vram_gb_min, vram_gb_max, model, quantization, backend, runner_type, concurrent_users)
     )
 
     filtered = _apply_filters(
@@ -140,6 +163,7 @@ async def query_ppb_results(
         model=model,
         quantization=quantization,
         backend=backend,
+        runner_type=runner_type,
         concurrent_users=concurrent_users,
     )
     filtered_count = len(filtered)

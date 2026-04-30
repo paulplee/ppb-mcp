@@ -8,6 +8,8 @@ from typing import Any
 
 import pandas as pd
 
+from ppb_mcp.tools._filters import is_blank
+
 
 def _is_nan(v: Any) -> bool:
     return isinstance(v, float) and math.isnan(v)
@@ -63,13 +65,13 @@ def filter_qualitative(
     if "run_type" not in df.columns:
         return df.iloc[0:0]
     out = df[df["run_type"] == "qualitative"]
-    if model and "model_base" in out.columns:
-        out = out[out["model_base"].astype(str).str.contains(model, case=False, na=False)]
-    if quantization and "quant" in out.columns:
+    if not is_blank(model) and "model_base" in out.columns:
+        out = out[out["model_base"].astype(str).str.contains(model, case=False, na=False)]  # type: ignore[arg-type]
+    if not is_blank(quantization) and "quant" in out.columns:
         out = out[out["quant"] == quantization]
-    if gpu_name and "gpu_name" in out.columns:
-        out = out[out["gpu_name"].astype(str).str.contains(gpu_name, case=False, na=False)]
-    if runner_type and "runner_type" in out.columns:
+    if not is_blank(gpu_name) and "gpu_name" in out.columns:
+        out = out[out["gpu_name"].astype(str).str.contains(gpu_name, case=False, na=False)]  # type: ignore[arg-type]
+    if not is_blank(runner_type) and "runner_type" in out.columns:
         out = out[out["runner_type"] == runner_type]
     return out
 

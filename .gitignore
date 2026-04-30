@@ -92,6 +92,7 @@ ehthumbs.db
 .project
 .classpath
 .settings/
+memlog/
 
 # ── Logs ──────────────────────────────────────────────────────────────────────
 *.log

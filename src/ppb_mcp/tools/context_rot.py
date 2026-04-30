@@ -20,10 +20,16 @@ async def get_context_rot_breakdown(
     """Get detailed context-rot (long-context recall) scores broken down by
     context length, insertion depth, and needle type.
 
+    USE THIS TOOL when a user asks how well a model recalls information buried in
+    long contexts, or wants to know the model's effective context length.
+
     Context rot measures whether a model can recall a specific fact buried
     in a long context. Scores drop at longer lengths and extreme depths.
     A score of 0.0 at 131072 tokens means the model completely fails at
     128K context; 1.0 at 4096 means perfect recall at 4K.
+
+    NOTE: Do NOT pass "null" for gpu_name — omit it entirely if unspecified.
+    Qualitative data is sparse; many (model, quant, gpu) combos have no data yet.
 
     Args:
         model: Partial match on model name.

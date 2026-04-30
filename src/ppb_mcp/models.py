@@ -22,6 +22,7 @@ class BenchmarkRow(BaseModel):
     p50_itl_ms: float | None = None
     n_ctx: int | None = None
     backend: str | None = None  # from `backends`
+    runner_type: str | None = None  # "llama-bench" | "llama-server" | "llama-server-loadtest"
     avg_power_w: float | None = None
     max_power_w: float | None = None
     avg_gpu_temp_c: float | None = None
@@ -74,6 +75,10 @@ class TestedConfigs(BaseModel):
     gpus: list[str]
     models: list[str]
     quantizations: list[str]
+    runner_types: list[str] = Field(
+        default_factory=list,
+        description="Available runner_type values; filter by these in query_ppb_results",
+    )
     total_benchmark_rows: int
     last_updated: str
 
@@ -197,3 +202,68 @@ class QualitativeQueryResult(BaseModel):
     rows: list[QualitativeRow]
     total_qualitative_rows: int
     filtered_count: int
+
+
+# ─── New tool models ──────────────────────────────────────────────────────────
+
+
+class QuantitativeComparisonRow(BaseModel):
+    quantization: str
+    tokens_per_second: float | None = None
+    avg_ttft_ms: float | None = None
+    p50_itl_ms: float | None = None
+    vram_gb: float | None = None
+    concurrent_users: int | None = None
+    runner_type: str | None = None
+    n_rows: int = 1  # how many benchmark rows were averaged
+
+
+class QuantitativeComparison(BaseModel):
+    model: str
+    gpu_name: str
+    rows: list[QuantitativeComparisonRow]
+    fastest_quant: str | None = None
+    lowest_ttft_quant: str | None = None
+    most_efficient_quant: str | None = None
+    insight: str
+
+
+class CombinedScores(BaseModel):
+    """Quantitative + qualitative metrics for one (gpu, model, quant) configuration."""
+
+    gpu_name: str
+    model: str
+    quantization: str
+    # Quantitative
+    tokens_per_second: float | None = None
+    avg_ttft_ms: float | None = None
+    p50_itl_ms: float | None = None
+    vram_gb: float | None = None
+    runner_type: str | None = None
+    # Qualitative
+    context_rot_score: float | None = None
+    overall_tool_accuracy: float | None = None
+    quality_composite_score: float | None = None
+    mt_bench_score: float | None = None
+    # Meta
+    has_quantitative_data: bool = False
+    has_qualitative_data: bool = False
+    insight: str
+
+
+class RankedConfig(BaseModel):
+    quantization: str
+    rank: int
+    tokens_per_second: float | None = None
+    context_rot_score: float | None = None
+    mt_bench_score: float | None = None
+    overall_tool_accuracy: float | None = None
+    composite_score: float
+    insight: str
+
+
+class RankedQuantizations(BaseModel):
+    model: str
+    gpu_name: str
+    priority: str
+    rows: list[RankedConfig]

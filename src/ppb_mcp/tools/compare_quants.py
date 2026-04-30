@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ppb_mcp.data import PPBDataStore
 from ppb_mcp.models import QualitativeComparison, QualitativeComparisonRow
+from ppb_mcp.tools._filters import is_blank
 from ppb_mcp.tools._qualitative import filter_qualitative, first_non_null, opt_float
 
 _K_QUANT_PREFIXES = ("Q2_K", "Q3_K", "Q4_K", "Q5_K", "Q6_K")
@@ -72,9 +73,16 @@ async def compare_quants_qualitative(
 ) -> QualitativeComparison:
     """Compare qualitative benchmark scores across quantizations for a model.
 
+    USE THIS TOOL when a user asks "which quantization has better quality?" or
+    wants a side-by-side comparison of context recall, tool accuracy, and MT-Bench
+    scores across quantizations for the same model.
+
     Returns a table of qualitative scores for each tested quantization,
     identifies the best quant per metric, and provides a plain-language
     insight summarizing the trade-offs.
+
+    NOTE: Do NOT pass "null" for gpu_name — omit it entirely if unspecified.
+    Qualitative data is sparse; many (model, quant, gpu) combos have no data yet.
 
     Args:
         model: Partial match on model name.
@@ -88,7 +96,7 @@ async def compare_quants_qualitative(
 
     sub = filter_qualitative(df, model=model, gpu_name=gpu_name)
 
-    chosen_gpu = gpu_name or ""
+    chosen_gpu = gpu_name if not is_blank(gpu_name) else ""
     if sub.empty:
         return QualitativeComparison(
             model=model,

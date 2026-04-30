@@ -1,31 +1,45 @@
 # ppb-mcp
 
-> An MCP server exposing Poor Paul's Benchmark (PPB) — real GPU inference benchmarks for quantized LLMs — as queryable tools.
+> An MCP server exposing Poor Paul's Benchmark (PPB) — real GPU inference benchmarks
+> for quantized LLMs — as queryable tools.
 
 ## What this is
-A FastMCP server that wraps the HuggingFace dataset `paulplee/ppb-results`
-(throughput, VRAM, concurrent users, quantization) and exposes 4 tools to LLM clients.
+A FastMCP server wrapping the HuggingFace dataset `paulplee/ppb-results`
+(~34,800 rows, refreshed hourly). Covers throughput, VRAM, concurrency, latency,
+power draw, and model quality scores across quantized GGUF models.
 
 ## Endpoint
-- **Streamable HTTP**: https://mcp.poorpaul.dev/mcp
-- **Health**: https://mcp.poorpaul.dev/health
+- Streamable HTTP: https://mcp.poorpaul.dev/mcp
+- Health: https://mcp.poorpaul.dev/health
 
-## Tools
-- `list_tested_configs` — list every tested GPU, model, and quantization
-- `query_ppb_results` — filter raw rows by GPU / VRAM / model / quant / users / backend
-- `recommend_quantization(gpu_vram_gb, concurrent_users, gpu_name?, model?, priority=balance)` — three-tier empirical-first recommendation
-- `get_gpu_headroom(gpu_name, quantization, model, concurrent_users)` — VRAM sanity check
+## Hardware in the dataset (current)
+- Apple M4 Pro (64 GB)
+- NVIDIA GeForce RTX 4060 Ti (32 GB total, dual-card)
+- NVIDIA GeForce RTX 5060 Ti (16 GB)
+- NVIDIA GeForce RTX 5090 (32 GB)
+- NVIDIA GB10 (120 GB)
 
-## Confidence tiers
-- **high** — ≥3 empirical rows match exactly
-- **medium** — 1–2 empirical rows OR same model+quant on a different GPU at the same concurrency
-- **low** — formula-only: `(params_B × bits_per_weight / 8) × 1.15`, viable if ≤ 90% of VRAM
+## Runner types — IMPORTANT
+The dataset mixes two runner types that are NOT directly comparable:
+- `llama-bench`            — raw single-prompt throughput (higher tok/s numbers)
+- `llama-server-loadtest`  — real concurrent-user throughput (lower, more realistic)
+Always filter by `runner_type` when comparing speeds across GPUs.
 
-## Data source
-HuggingFace dataset: https://huggingface.co/datasets/paulplee/ppb-results
-- ~30,000 rows, refreshed hourly
-- 3 GPUs today: NVIDIA RTX 5090 (32 GB), Apple M4 Pro (64 GB), NVIDIA GB10 (120 GB)
-- 32 quantization variants, 34 models
+## Quantitative tools
+- `list_tested_configs`           — all GPUs, models, quantizations in the dataset
+- `query_ppb_results`             — filter raw rows by GPU/model/quant/users/backend/runner_type
+- `recommend_quantization`        — best quant for a given VRAM budget and user count
+- `get_gpu_headroom`              — VRAM sanity check for a specific config
+- `compare_quants_quantitative`   — side-by-side TPS/TTFT comparison across quantizations
+- `get_combined_scores`           — quantitative + qualitative metrics in one call
 
-## Repository
-https://github.com/paulplee/ppb-mcp
+## Qualitative tools (data sparse — check has_qualitative_data flag)
+- `get_qualitative_summary`       — context rot, tool accuracy, MT-Bench scores for a config
+- `query_qualitative_results`     — filter qualitative rows
+- `get_context_rot_breakdown`     — long-context recall by length/depth/needle type
+- `get_tool_accuracy_breakdown`   — structured output accuracy metrics
+- `compare_quants_qualitative`    — quality score comparison across quantizations
+
+## Usage tip
+Call `list_tested_configs` first to orient yourself on what GPUs and models are available.
+Never pass the string "null" for optional parameters — omit the parameter entirely.

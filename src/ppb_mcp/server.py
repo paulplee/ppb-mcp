@@ -15,12 +15,15 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from ppb_mcp import __version__
 from ppb_mcp.data import PPBDataStore
 from ppb_mcp.tools.compare_quants import compare_quants_qualitative
+from ppb_mcp.tools.compare_quantitative import compare_quants_quantitative
+from ppb_mcp.tools.combined import get_combined_scores
 from ppb_mcp.tools.context_rot import get_context_rot_breakdown
 from ppb_mcp.tools.headroom import get_gpu_headroom
 from ppb_mcp.tools.list_configs import list_tested_configs
 from ppb_mcp.tools.qualitative_query import query_qualitative_results
 from ppb_mcp.tools.qualitative_summary import get_qualitative_summary
 from ppb_mcp.tools.query import query_ppb_results
+from ppb_mcp.tools.rank import rank_by_priority
 from ppb_mcp.tools.recommend import recommend_quantization
 from ppb_mcp.tools.tool_accuracy import get_tool_accuracy_breakdown
 
@@ -85,7 +88,8 @@ app: FastMCP = FastMCP(
     instructions=(
         "Queryable GPU inference benchmarks from Poor Paul's Benchmark (PPB). "
         "Quantitative tools: recommend_quantization, query_ppb_results, "
-        "get_gpu_headroom, list_tested_configs. "
+        "get_gpu_headroom, list_tested_configs, compare_quants_quantitative, "
+        "get_combined_scores, rank_by_priority. "
         "Qualitative tools: get_qualitative_summary, query_qualitative_results, "
         "get_context_rot_breakdown, get_tool_accuracy_breakdown, compare_quants_qualitative. "
         "Data source: https://huggingface.co/datasets/paulplee/ppb-results"
@@ -99,6 +103,9 @@ app.tool(list_tested_configs)
 app.tool(query_ppb_results)
 app.tool(recommend_quantization)
 app.tool(get_gpu_headroom)
+app.tool(compare_quants_quantitative)
+app.tool(get_combined_scores)
+app.tool(rank_by_priority)
 
 # Register the qualitative tools.
 app.tool(get_qualitative_summary)

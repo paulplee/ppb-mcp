@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ppb_mcp.data import PPBDataStore
 from ppb_mcp.models import QualitativeSummary
+from ppb_mcp.tools._filters import is_blank
 from ppb_mcp.tools._qualitative import filter_qualitative, first_non_null, opt_float, opt_str
 
 
@@ -14,9 +15,16 @@ async def get_qualitative_summary(
 ) -> QualitativeSummary:
     """Get all available qualitative benchmark scores for a model+quant combination.
 
+    USE THIS TOOL when a user asks about model quality, context recall ability, tool-call
+    accuracy, or MT-Bench scores for a specific model and quantization.
+
     Returns scores for whichever of the four qualitative phases have been run:
     context rot (long-context recall), tool accuracy (structured output),
     answer quality (knowledge accuracy + coherence), and multi-turn (memory).
+    Check has_qualitative_data via phases_available — qualitative data is sparse.
+
+    NOTE: Do NOT pass "null" for gpu_name — omit it entirely if unspecified. Qualitative
+    data may be absent for many (model, quant, gpu) combos; check phases_available.
 
     Args:
         model: Partial match on model name, e.g. "Qwen3.5-0.8B".
@@ -39,7 +47,7 @@ async def get_qualitative_summary(
         )
 
     # If no gpu_name supplied, scope to the first matching GPU in the data.
-    if not gpu_name and "gpu_name" in sub.columns:
+    if is_blank(gpu_name) and "gpu_name" in sub.columns:
         first_gpu = sub["gpu_name"].dropna().astype(str).iloc[0]
         sub = sub[sub["gpu_name"] == first_gpu]
         chosen_gpu = first_gpu

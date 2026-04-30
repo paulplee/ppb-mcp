@@ -57,8 +57,14 @@ async def query_qualitative_results(
 ) -> QualitativeQueryResult:
     """Query qualitative benchmark results with optional filters.
 
+    USE THIS TOOL when you need to browse raw qualitative rows, find which models
+    have been evaluated for quality, or filter by minimum score thresholds.
+
     Use runner_type to restrict to a specific phase:
       'context-rot', 'tool-accuracy', 'answer-quality', 'multiturn'
+
+    NOTE: Do NOT pass "null" for any string parameter — omit it entirely. Qualitative
+    data is sparse; many combos have no rows. Use list_tested_configs() first.
 
     Args:
         model: Partial match on model name.
