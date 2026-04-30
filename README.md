@@ -272,6 +272,22 @@ DOMAIN=mcp.example.com EMAIL=you@example.com ./deploy/deploy.sh
 
 This installs Docker, builds the image, registers a systemd unit, configures nginx, and runs certbot.
 
+## Updating a self-hosted instance
+
+After pulling new code on the server:
+
+```bash
+sudo systemctl restart ppb-mcp
+```
+
+The systemd unit runs `docker compose pull` before starting, so the new image is fetched automatically. Check that it came up cleanly with:
+
+```bash
+sudo systemctl status ppb-mcp
+# or follow live logs:
+journalctl -u ppb-mcp -f
+```
+
 ## Development
 
 ```bash

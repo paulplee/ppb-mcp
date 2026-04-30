@@ -140,7 +140,7 @@ async def get_combined_scores(
             first_gpu = qual_sub["gpu_name"].dropna()
             if not first_gpu.empty:
                 chosen_gpu = str(first_gpu.iloc[0])
-        for col, target in [
+        for col, _target in [
             ("context_rot_score", "context_rot"),
             ("overall_tool_accuracy", "tool"),
             ("quality_composite_score", "quality"),
