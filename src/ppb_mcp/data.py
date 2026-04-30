@@ -124,9 +124,9 @@ class PPBDataStore:
         if vram_col in df.columns and "gpu_name" in df.columns:
             suspect = df[
                 (df[vram_col].fillna(0) > 200)
-                & ~df["gpu_name"].astype(str).str.contains(
-                    "GB10|Grace|H100|A100", case=False, na=False
-                )
+                & ~df["gpu_name"]
+                .astype(str)
+                .str.contains("GB10|Grace|H100|A100", case=False, na=False)
             ]
             if not suspect.empty:
                 logger.warning(

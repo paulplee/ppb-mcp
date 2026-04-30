@@ -14,9 +14,9 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ppb_mcp import __version__
 from ppb_mcp.data import PPBDataStore
-from ppb_mcp.tools.compare_quants import compare_quants_qualitative
-from ppb_mcp.tools.compare_quantitative import compare_quants_quantitative
 from ppb_mcp.tools.combined import get_combined_scores
+from ppb_mcp.tools.compare_quantitative import compare_quants_quantitative
+from ppb_mcp.tools.compare_quants import compare_quants_qualitative
 from ppb_mcp.tools.context_rot import get_context_rot_breakdown
 from ppb_mcp.tools.headroom import get_gpu_headroom
 from ppb_mcp.tools.list_configs import list_tested_configs

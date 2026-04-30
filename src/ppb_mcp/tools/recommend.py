@@ -16,6 +16,7 @@ HEADROOM_FRACTION = 0.90  # leave 10% headroom for OS / driver overhead
 
 def _filter_viable(ranked: pd.DataFrame, gpu_vram_gb: float, users: int) -> pd.DataFrame:
     """Drop candidates whose two-term VRAM estimate exceeds the GPU budget."""
+
     def fits(row: pd.Series) -> bool:
         model = str(row.get("model_base") or "")
         quant = str(row.get("quant") or "")
@@ -23,6 +24,7 @@ def _filter_viable(ranked: pd.DataFrame, gpu_vram_gb: float, users: int) -> pd.D
         if total is None:
             return True  # can't rule out; keep and note uncertainty
         return total <= (gpu_vram_gb * HEADROOM_FRACTION)
+
     mask = ranked.apply(fits, axis=1)
     return ranked[mask]
 
@@ -241,7 +243,9 @@ async def recommend_quantization(
 
             chosen_model_for_vram = str(top.get("model_base") or model_label)
             # Two-term formula: fixed weights + per-user KV cache (does not replicate weights)
-            total_used = estimate_total_vram_gb(chosen_model_for_vram, chosen_quant, concurrent_users)
+            total_used = estimate_total_vram_gb(
+                chosen_model_for_vram, chosen_quant, concurrent_users
+            )
             if total_used is None:
                 # Formula fallback: distribute the GPU's total VRAM across users.
                 per_user = float(top.get(vram_col, gpu_vram_gb)) / max(concurrent_users, 1)
@@ -282,9 +286,9 @@ async def recommend_quantization(
                     f"recommendation uses {effective_users_t1}-user measurements as the "
                     "nearest tested benchmark.)"
                 )
-            alternatives = [str(q) for q in best_per_quant["quant"].tolist() if str(q) != chosen_quant][
-                :2
-            ]
+            alternatives = [
+                str(q) for q in best_per_quant["quant"].tolist() if str(q) != chosen_quant
+            ][:2]
             return QuantizationRecommendation(
                 recommended_quantization=chosen_quant,
                 model=chosen_model,

@@ -8,7 +8,7 @@ from typing import Literal
 from ppb_mcp.data import PPBDataStore
 from ppb_mcp.models import RankedConfig, RankedQuantizations
 from ppb_mcp.tools._filters import is_blank
-from ppb_mcp.tools._qualitative import filter_qualitative, opt_float
+from ppb_mcp.tools._qualitative import filter_qualitative
 
 
 def _opt_float(v: object) -> float | None:
@@ -82,9 +82,13 @@ async def rank_by_priority(
     if "run_type" in quant_df.columns:
         quant_df = quant_df[quant_df["run_type"] != "qualitative"]
     if not is_blank(model) and "model_base" in quant_df.columns:
-        quant_df = quant_df[quant_df["model_base"].astype(str).str.contains(model, case=False, na=False)]
+        quant_df = quant_df[
+            quant_df["model_base"].astype(str).str.contains(model, case=False, na=False)
+        ]
     if not is_blank(gpu_name) and "gpu_name" in quant_df.columns:
-        quant_df = quant_df[quant_df["gpu_name"].astype(str).str.contains(gpu_name, case=False, na=False)]
+        quant_df = quant_df[
+            quant_df["gpu_name"].astype(str).str.contains(gpu_name, case=False, na=False)
+        ]
     if not quant_df.empty and "model_base" in quant_df.columns:
         first_m = quant_df["model_base"].dropna()
         if not first_m.empty:
@@ -96,7 +100,11 @@ async def rank_by_priority(
 
     # Best TPS per quant (and tokens_per_watt if available).
     quant_stats: dict[str, dict] = {}
-    if not quant_df.empty and "quant" in quant_df.columns and "throughput_tok_s" in quant_df.columns:
+    if (
+        not quant_df.empty
+        and "quant" in quant_df.columns
+        and "throughput_tok_s" in quant_df.columns
+    ):
         for quant_label, group in quant_df.groupby("quant"):
             tps_vals = group["throughput_tok_s"].dropna()
             if tps_vals.empty:
@@ -116,11 +124,13 @@ async def rank_by_priority(
     qual_stats: dict[str, dict] = {}
     if not qual_sub.empty and "quant" in qual_sub.columns:
         for quant_label, group in qual_sub.groupby("quant"):
+
             def pick(col: str, g=group) -> float | None:
                 if col not in g.columns:
                     return None
                 vals = g[col].dropna()
                 return float(vals.iloc[0]) if not vals.empty else None
+
             qual_stats[str(quant_label)] = {
                 "context_rot": pick("context_rot_score"),
                 "tool_accuracy": pick("overall_tool_accuracy"),

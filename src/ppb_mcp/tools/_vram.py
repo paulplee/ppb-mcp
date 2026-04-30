@@ -11,6 +11,7 @@ at N concurrent users is approximated as `vram_per_user_gb × N` (the spec's
 simplification — overestimates because model weights don't scale with users,
 but it errs on the safe side, which is desirable for a recommendation tool).
 """
+
 from __future__ import annotations
 
 import re

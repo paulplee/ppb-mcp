@@ -1,4 +1,5 @@
 """query_ppb_results tool."""
+
 from __future__ import annotations
 
 import math
@@ -32,10 +33,18 @@ def _row_to_model(r: pd.Series) -> BenchmarkRow:
     vram = r.get("gpu_total_vram_gb")
     if vram is None or (isinstance(vram, float) and math.isnan(vram)):
         vram = r.get("gpu_vram_gb")
-    vram_f = float(vram) if vram is not None and not (isinstance(vram, float) and math.isnan(vram)) else 0.0
+    vram_f = (
+        float(vram)
+        if vram is not None and not (isinstance(vram, float) and math.isnan(vram))
+        else 0.0
+    )
 
     cu_raw = r.get("concurrent_users")
-    cu = int(cu_raw) if cu_raw is not None and not (isinstance(cu_raw, float) and math.isnan(cu_raw)) else 1
+    cu = (
+        int(cu_raw)
+        if cu_raw is not None and not (isinstance(cu_raw, float) and math.isnan(cu_raw))
+        else 1
+    )
 
     return BenchmarkRow(
         gpu_name=str(r.get("gpu_name") or ""),
@@ -152,7 +161,16 @@ async def query_ppb_results(
     total = len(df)
     no_filters = all(
         v is None
-        for v in (gpu_name, vram_gb_min, vram_gb_max, model, quantization, backend, runner_type, concurrent_users)
+        for v in (
+            gpu_name,
+            vram_gb_min,
+            vram_gb_max,
+            model,
+            quantization,
+            backend,
+            runner_type,
+            concurrent_users,
+        )
     )
 
     filtered = _apply_filters(

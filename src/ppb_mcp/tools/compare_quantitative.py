@@ -67,8 +67,7 @@ def _build_insight(
         sec_tps, sec_q = by_tps[1]
         speedup = top_tps / sec_tps if sec_tps > 0 else 1.0
         summary = (
-            f"{top_q} is {speedup:.1f}× faster than {sec_q} "
-            f"({top_tps:.0f} vs {sec_tps:.0f} tok/s)."
+            f"{top_q} is {speedup:.1f}× faster than {sec_q} ({top_tps:.0f} vs {sec_tps:.0f} tok/s)."
         )
         if parts:
             summary += f" Best by metric — {'; '.join(parts)}."
@@ -166,16 +165,30 @@ async def compare_quants_quantitative(
         tps_vals = group["throughput_tok_s"].dropna()
         avg_tps = float(tps_vals.mean()) if not tps_vals.empty else None
 
-        ttft_vals = group["avg_ttft_ms"].dropna() if "avg_ttft_ms" in group.columns else pd.Series([], dtype=float)
+        ttft_vals = (
+            group["avg_ttft_ms"].dropna()
+            if "avg_ttft_ms" in group.columns
+            else pd.Series([], dtype=float)
+        )
         avg_ttft = float(ttft_vals.mean()) if not ttft_vals.empty else None
 
-        itl_vals = group["p50_itl_ms"].dropna() if "p50_itl_ms" in group.columns else pd.Series([], dtype=float)
+        itl_vals = (
+            group["p50_itl_ms"].dropna()
+            if "p50_itl_ms" in group.columns
+            else pd.Series([], dtype=float)
+        )
         avg_itl = float(itl_vals.mean()) if not itl_vals.empty else None
 
-        vram_vals = group[vram_col].dropna() if vram_col in group.columns else pd.Series([], dtype=float)
+        vram_vals = (
+            group[vram_col].dropna() if vram_col in group.columns else pd.Series([], dtype=float)
+        )
         max_vram = float(vram_vals.max()) if not vram_vals.empty else None
 
-        cu_vals = group["concurrent_users"].dropna() if "concurrent_users" in group.columns else pd.Series([], dtype=float)
+        cu_vals = (
+            group["concurrent_users"].dropna()
+            if "concurrent_users" in group.columns
+            else pd.Series([], dtype=float)
+        )
         cu = _opt_int(cu_vals.iloc[0]) if not cu_vals.empty else None
 
         # Determine runner_type label for this quant group.
@@ -204,7 +217,9 @@ async def compare_quants_quantitative(
 
     # Identify top performers.
     fastest_quant: str | None = None
-    tps_scored = [(r.tokens_per_second, r.quantization) for r in rows if r.tokens_per_second is not None]
+    tps_scored = [
+        (r.tokens_per_second, r.quantization) for r in rows if r.tokens_per_second is not None
+    ]
     if tps_scored:
         fastest_quant = max(tps_scored, key=lambda t: t[0])[1]
 

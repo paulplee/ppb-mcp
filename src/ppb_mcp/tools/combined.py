@@ -7,7 +7,7 @@ import math
 from ppb_mcp.data import PPBDataStore
 from ppb_mcp.models import CombinedScores
 from ppb_mcp.tools._filters import is_blank
-from ppb_mcp.tools._qualitative import filter_qualitative, opt_float
+from ppb_mcp.tools._qualitative import filter_qualitative
 
 
 def _opt_float(v: object) -> float | None:
@@ -33,7 +33,9 @@ def _build_insight(
         speed_str = f"~{tps:.0f} tok/s" if tps is not None else "unknown speed"
         parts: list[str] = [f"Runs at {speed_str}"]
         if context_rot is not None:
-            quality_label = "good" if context_rot >= 0.8 else ("moderate" if context_rot >= 0.5 else "limited")
+            quality_label = (
+                "good" if context_rot >= 0.8 else ("moderate" if context_rot >= 0.5 else "limited")
+            )
             parts.append(f"context recall score {context_rot:.2f} ({quality_label})")
         if tool_acc is not None:
             ta_label = "good" if tool_acc >= 0.8 else ("moderate" if tool_acc >= 0.5 else "poor")
@@ -45,7 +47,9 @@ def _build_insight(
         return f"Speed data available: {speed_str}{vram_str}. No qualitative benchmarks run for this config yet."
     # has_qual only
     if context_rot is not None:
-        quality_label = "good" if context_rot >= 0.8 else ("moderate" if context_rot >= 0.5 else "limited")
+        quality_label = (
+            "good" if context_rot >= 0.8 else ("moderate" if context_rot >= 0.5 else "limited")
+        )
         return f"Qualitative data available (context recall: {context_rot:.2f}, {quality_label}). No speed benchmarks for this config yet."
     return "Qualitative data available but no speed benchmarks for this config yet."
 
@@ -80,11 +84,15 @@ async def get_combined_scores(
     if "run_type" in quant_sub.columns:
         quant_sub = quant_sub[quant_sub["run_type"] != "qualitative"]
     if not is_blank(model) and "model_base" in quant_sub.columns:
-        quant_sub = quant_sub[quant_sub["model_base"].astype(str).str.contains(model, case=False, na=False)]
+        quant_sub = quant_sub[
+            quant_sub["model_base"].astype(str).str.contains(model, case=False, na=False)
+        ]
     if not is_blank(quantization) and "quant" in quant_sub.columns:
         quant_sub = quant_sub[quant_sub["quant"] == quantization]
     if not is_blank(gpu_name) and "gpu_name" in quant_sub.columns:
-        quant_sub = quant_sub[quant_sub["gpu_name"].astype(str).str.contains(gpu_name, case=False, na=False)]
+        quant_sub = quant_sub[
+            quant_sub["gpu_name"].astype(str).str.contains(gpu_name, case=False, na=False)
+        ]
 
     tokens_per_second: float | None = None
     avg_ttft_ms: float | None = None
@@ -99,7 +107,9 @@ async def get_combined_scores(
         # Prefer llama-server-loadtest
         loadtest = quant_sub
         if "runner_type" in quant_sub.columns:
-            lt = quant_sub[quant_sub["runner_type"].astype(str).str.contains("loadtest", case=False, na=False)]
+            lt = quant_sub[
+                quant_sub["runner_type"].astype(str).str.contains("loadtest", case=False, na=False)
+            ]
             if not lt.empty:
                 loadtest = lt
         best = loadtest.sort_values("throughput_tok_s", ascending=False).iloc[0]

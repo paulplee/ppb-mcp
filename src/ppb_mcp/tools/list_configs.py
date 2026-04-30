@@ -1,4 +1,5 @@
 """list_tested_configs tool."""
+
 from __future__ import annotations
 
 from ppb_mcp.data import PPBDataStore

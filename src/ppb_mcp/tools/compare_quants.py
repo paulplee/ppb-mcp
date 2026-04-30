@@ -123,6 +123,7 @@ async def compare_quants_qualitative(
 
     rows: list[QualitativeComparisonRow] = []
     for quant_label, group in sub.groupby("quant"):
+
         def pick(col: str, g=group) -> float | None:
             if col not in g.columns:
                 return None
