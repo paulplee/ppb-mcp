@@ -274,9 +274,11 @@ This installs Docker, builds the image, registers a systemd unit, configures ngi
 
 ## Updating a self-hosted instance
 
-After pulling new code on the server:
+### Deployed via `deploy.sh` (systemd manages the container)
 
 ```bash
+cd /opt/ppb-mcp
+sudo git pull --ff-only
 sudo systemctl restart ppb-mcp
 ```
 
@@ -286,6 +288,17 @@ The systemd unit runs `docker compose pull` before starting, so the new image is
 sudo systemctl status ppb-mcp
 # or follow live logs:
 journalctl -u ppb-mcp -f
+```
+
+### Running docker compose directly (no systemd unit)
+
+```bash
+cd ~/ppb-mcp          # or wherever you cloned the repo
+git pull --ff-only
+docker compose build
+docker compose up -d
+# verify:
+docker compose logs -f ppb-mcp
 ```
 
 ## Development
