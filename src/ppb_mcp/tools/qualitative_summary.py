@@ -70,12 +70,14 @@ async def get_qualitative_summary(
     # When quantization is not specified, pick the quant with the best composite score
     # rather than the first quant in storage order (which may be BF16, etc.).
     if quantization is None and "quant" in sub.columns:
+
         def _quant_score(rows) -> float:
             def _v(col: str) -> float:
                 if col not in rows.columns:
                     return 0.0
                 val = rows[col].dropna()
                 return float(val.iloc[0]) if not val.empty else 0.0
+
             rot = _v("context_rot_score")
             ta = _v("overall_tool_accuracy")
             mt = _v("mt_bench_score")

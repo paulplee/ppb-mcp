@@ -82,8 +82,11 @@ async def query_qualitative_results(
     df = await store.get_df()
 
     from ppb_mcp.tools._qualitative import _QUALITATIVE_RUNNER_TYPES
+
     qualitative_total = (
-        int(df["runner_type"].isin(_QUALITATIVE_RUNNER_TYPES).sum()) if "runner_type" in df.columns else 0
+        int(df["runner_type"].isin(_QUALITATIVE_RUNNER_TYPES).sum())
+        if "runner_type" in df.columns
+        else 0
     )
 
     sub = filter_qualitative(

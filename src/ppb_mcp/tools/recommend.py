@@ -210,7 +210,9 @@ async def recommend_quantization(
                 model or "any tested model",
                 "Either gpu_vram_gb or gpu_name must be provided.",
             )
-        vram_col_lookup = "gpu_total_vram_gb" if "gpu_total_vram_gb" in df.columns else "gpu_vram_gb"
+        vram_col_lookup = (
+            "gpu_total_vram_gb" if "gpu_total_vram_gb" in df.columns else "gpu_vram_gb"
+        )
         gpu_rows = df
         if "gpu_name" in df.columns:
             gpu_rows = df[df["gpu_name"].astype(str).str.contains(gpu_name, case=False, na=False)]
