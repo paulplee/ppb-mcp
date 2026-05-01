@@ -10,25 +10,28 @@ from ppb_mcp.tools._qualitative import filter_qualitative, first_non_null, opt_f
 
 async def get_qualitative_summary(
     model: str,
-    quantization: str,
+    quantization: str | None = None,
     gpu_name: str | None = None,
 ) -> QualitativeSummary:
-    """Get all available qualitative benchmark scores for a model+quant combination.
+    """Get all available qualitative benchmark scores for a model, optionally filtered
+    to a specific quantization.
 
     USE THIS TOOL when a user asks about model quality, context recall ability, tool-call
-    accuracy, or MT-Bench scores for a specific model and quantization.
+    accuracy, or MT-Bench scores for a specific model.
 
     Returns scores for whichever of the four qualitative phases have been run:
     context rot (long-context recall), tool accuracy (structured output),
     answer quality (knowledge accuracy + coherence), and multi-turn (memory).
     Check has_qualitative_data via phases_available — qualitative data is sparse.
 
-    NOTE: Do NOT pass "null" for gpu_name — omit it entirely if unspecified. Qualitative
-    data may be absent for many (model, quant, gpu) combos; check phases_available.
+    NOTE: Do NOT pass "null" for gpu_name or quantization — omit them entirely if
+    unspecified. When quantization is omitted, scores from the first matching row are
+    returned. Qualitative data may be absent for many (model, quant, gpu) combos.
 
     Args:
         model: Partial match on model name, e.g. "Qwen3.5-0.8B".
-        quantization: Exact quantization label, e.g. "Q4_K_M".
+        quantization: Optional exact quantization label, e.g. "Q4_K_M". When omitted,
+                      the best-covered quantization for the model is returned.
         gpu_name: Optional partial match on GPU name. If omitted, uses
                   the first matching GPU in the dataset.
     """
@@ -76,10 +79,14 @@ async def get_qualitative_summary(
         else None
     )
 
+    chosen_quant = quantization
+    if chosen_quant is None and "quant" in sub.columns:
+        chosen_quant = opt_str(first_non_null(sub["quant"]))
+
     return QualitativeSummary(
         gpu_name=chosen_gpu,
         model=chosen_model,
-        quantization=quantization,
+        quantization=chosen_quant,
         context_rot_score=pick("context_rot_score"),
         overall_tool_accuracy=pick("overall_tool_accuracy"),
         quality_composite_score=pick("quality_composite_score"),

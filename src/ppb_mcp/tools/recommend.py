@@ -162,8 +162,8 @@ def _empty_recommendation(
 
 
 async def recommend_quantization(
-    gpu_vram_gb: float,
     concurrent_users: int,
+    gpu_vram_gb: float | None = None,
     gpu_name: str | None = None,
     model: str | None = None,
     priority: Literal["quality", "speed", "balance", "efficiency"] = "balance",
@@ -186,10 +186,11 @@ async def recommend_quantization(
     NOTE: To omit a filter, EXCLUDE the parameter entirely. Do NOT pass "null".
 
     Args:
-        gpu_vram_gb: Total VRAM available on the GPU in GB.
         concurrent_users: Simultaneous inference requests to support (1–32).
+        gpu_vram_gb: Total VRAM available on the GPU in GB. Optional when gpu_name is
+            supplied — the VRAM will be looked up from benchmark rows automatically.
         gpu_name: Optional GPU name (partial, case-insensitive). If supplied, prefers
-            rows matching this exact GPU.
+            rows matching this exact GPU and auto-resolves VRAM when gpu_vram_gb is omitted.
         model: Optional model_base partial match, e.g. "Qwen3.5-9B".
         priority: "quality" | "speed" | "balance" | "efficiency" (default: "balance").
             "efficiency" ranks by tokens-per-watt — best for always-on or
@@ -199,6 +200,36 @@ async def recommend_quantization(
     store = PPBDataStore.instance()
     await store.ensure_loaded()
     df = await store.get_df()
+
+    # Resolve gpu_vram_gb from benchmark data when only gpu_name is supplied.
+    if gpu_vram_gb is None:
+        if is_blank(gpu_name):
+            return _empty_recommendation(
+                0.0,
+                concurrent_users,
+                model or "any tested model",
+                "Either gpu_vram_gb or gpu_name must be provided.",
+            )
+        vram_col_lookup = "gpu_total_vram_gb" if "gpu_total_vram_gb" in df.columns else "gpu_vram_gb"
+        gpu_rows = df
+        if "gpu_name" in df.columns:
+            gpu_rows = df[df["gpu_name"].astype(str).str.contains(gpu_name, case=False, na=False)]
+        if gpu_rows.empty or vram_col_lookup not in gpu_rows.columns:
+            return _empty_recommendation(
+                0.0,
+                concurrent_users,
+                model or "any tested model",
+                f"GPU {gpu_name!r} not found in the dataset; cannot determine VRAM capacity.",
+            )
+        resolved = float(gpu_rows[vram_col_lookup].dropna().max() or 0.0)
+        if resolved <= 0.0:
+            return _empty_recommendation(
+                0.0,
+                concurrent_users,
+                model or "any tested model",
+                f"GPU {gpu_name!r} found but VRAM capacity is unknown.",
+            )
+        gpu_vram_gb = resolved
 
     model_label = model or "any tested model"
     gpu_label = gpu_name or f"{gpu_vram_gb:.0f} GB GPU"

@@ -45,6 +45,17 @@ async def get_tool_accuracy_breakdown(
         runner_type="tool-accuracy",
     )
 
+    # Fall back to qualitative summary rows (runner_type="qualitative") which embed
+    # tool accuracy columns for most models.
+    if sub.empty:
+        sub = filter_qualitative(
+            df,
+            model=model,
+            quantization=quantization,
+            gpu_name=gpu_name,
+            runner_type="qualitative",
+        )
+
     if sub.empty:
         return ToolAccuracyBreakdown(
             model=model,

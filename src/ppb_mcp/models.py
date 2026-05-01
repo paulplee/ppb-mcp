@@ -126,7 +126,7 @@ class QualitativeSummary(BaseModel):
 
     gpu_name: str
     model: str
-    quantization: str
+    quantization: str | None = None
     context_rot_score: float | None = None
     overall_tool_accuracy: float | None = None
     quality_composite_score: float | None = None

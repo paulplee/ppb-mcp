@@ -48,6 +48,17 @@ async def get_context_rot_breakdown(
         runner_type="context-rot",
     )
 
+    # Fall back to qualitative summary rows (runner_type="qualitative") which embed
+    # context_rot_score and the breakdown dicts for most models.
+    if sub.empty:
+        sub = filter_qualitative(
+            df,
+            model=model,
+            quantization=quantization,
+            gpu_name=gpu_name,
+            runner_type="qualitative",
+        )
+
     if sub.empty:
         return ContextRotBreakdown(
             model=model,
