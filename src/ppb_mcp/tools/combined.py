@@ -26,6 +26,7 @@ def _build_insight(
     tool_acc: float | None,
     has_quant: bool,
     has_qual: bool,
+    mt_bench_score: float | None = None,
 ) -> str:
     if not has_quant and not has_qual:
         return "No benchmark data found for this configuration."
@@ -40,7 +41,10 @@ def _build_insight(
         if tool_acc is not None:
             ta_label = "good" if tool_acc >= 0.8 else ("moderate" if tool_acc >= 0.5 else "poor")
             parts.append(f"tool accuracy {tool_acc:.2f} ({ta_label})")
-        return "; ".join(parts) + "."
+        suffix = ""
+        if mt_bench_score is None:
+            suffix = " MT-Bench score not yet available for this configuration."
+        return "; ".join(parts) + "." + suffix
     if has_quant:
         speed_str = f"~{tps:.0f} tok/s" if tps is not None else "speed measured"
         vram_str = f" using ~{vram:.1f} GB VRAM" if vram is not None else ""
@@ -165,6 +169,7 @@ async def get_combined_scores(
         tool_acc=overall_tool_accuracy,
         has_quant=has_quantitative_data,
         has_qual=has_qualitative_data,
+        mt_bench_score=mt_bench_score,
     )
 
     return CombinedScores(

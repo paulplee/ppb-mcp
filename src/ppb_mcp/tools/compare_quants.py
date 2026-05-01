@@ -73,6 +73,10 @@ async def compare_quants_qualitative(
 ) -> QualitativeComparison:
     """Compare qualitative benchmark scores across quantizations for a model.
 
+    USE THIS TOOL as a follow-up to get_qualitative_summary when the user wants to
+    compare multiple quantizations for the same model. Do not call this first —
+    call get_qualitative_summary first to get the best single-quant scorecard.
+
     USE THIS TOOL when a user asks "which quantization has better quality?" or
     wants a side-by-side comparison of context recall, tool accuracy, and MT-Bench
     scores across quantizations for the same model.

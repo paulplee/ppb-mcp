@@ -317,6 +317,14 @@ async def recommend_quantization(
                     f"recommendation uses {effective_users_t1}-user measurements as the "
                     "nearest tested benchmark.)"
                 )
+            # Flag when the matched model differs from what the user asked for.
+            user_model_clean = (model or "").strip().lower()
+            if user_model_clean and user_model_clean not in chosen_model.strip().lower():
+                reasoning += (
+                    f" Note: the requested model '{model}' was matched to '{chosen_model}'"
+                    " in the dataset — verify this is the intended model before using"
+                    " this recommendation."
+                )
             alternatives = [
                 str(q) for q in best_per_quant["quant"].tolist() if str(q) != chosen_quant
             ][:2]
@@ -389,6 +397,14 @@ async def recommend_quantization(
                     f"recommendation uses {effective_users_t2}-user measurements as the "
                     "nearest tested benchmark.)"
                 )
+            # Flag when the matched model differs from what the user asked for.
+            user_model_clean = (model or "").strip().lower()
+            if user_model_clean and user_model_clean not in chosen_model.strip().lower():
+                reasoning += (
+                    f" Note: the requested model '{model}' was matched to '{chosen_model}'"
+                    " in the dataset — verify this is the intended model before using"
+                    " this recommendation."
+                )
             return QuantizationRecommendation(
                 recommended_quantization=chosen_quant,
                 model=chosen_model,
@@ -428,6 +444,65 @@ async def recommend_quantization(
             candidates.append((quant, per_user, total, bits_per_weight(quant)))
 
     if not candidates:
+        # Second pass without headroom guard — find quants that physically fit but are risky.
+        risky_candidates: list[tuple[str, float, float, float]] = []
+        for quant in sorted(set(base["quant"].dropna().astype(str).tolist()) or {"Q4_K_M"}):
+            total = estimate_total_vram_gb(model, quant, concurrent_users)
+            if total is None:
+                per_user = estimate_vram_per_user_gb(model, quant)
+                if per_user is None:
+                    continue
+                total = per_user * concurrent_users
+            else:
+                per_user = estimate_vram_per_user_gb(model, quant) or (
+                    total / max(concurrent_users, 1)
+                )
+            if total <= gpu_vram_gb:
+                risky_candidates.append((quant, per_user, total, bits_per_weight(quant)))
+
+        if risky_candidates:
+            # Rank risky candidates by priority and pick the best.
+            if priority == "quality":
+                risky_candidates.sort(key=lambda c: c[3], reverse=True)
+            elif priority == "speed":
+                risky_candidates.sort(key=lambda c: c[3])
+            else:
+                risky_candidates.sort(key=lambda c: abs(c[3] - 4.5))
+            chosen_quant, per_user, total, _ = risky_candidates[0]
+            headroom = gpu_vram_gb - total
+            tps_estimate = 100.0
+            risky_alternatives = [c[0] for c in risky_candidates[1:3]]
+            risky_reasoning = _build_reasoning(
+                tier=3,
+                quant=chosen_quant,
+                gpu_label=gpu_label,
+                user_vram=gpu_vram_gb,
+                users=concurrent_users,
+                model_label=model_label,
+                per_user=per_user,
+                total=total,
+                headroom=headroom,
+                tps=tps_estimate,
+                n_rows=0,
+            )
+            risky_reasoning += (
+                f" WARNING: headroom is only {headroom:.1f} GB \u2014 OOM is likely at long context"
+                " lengths or with large system prompts. Test carefully before deploying."
+            )
+            return QuantizationRecommendation(
+                recommended_quantization=chosen_quant,
+                model=model_label,
+                gpu_vram_gb=gpu_vram_gb,
+                concurrent_users=concurrent_users,
+                estimated_vram_usage_gb=round(total, 2),
+                estimated_vram_per_user_gb=round(per_user, 2),
+                estimated_tokens_per_second=tps_estimate,
+                headroom_gb=round(headroom, 2),
+                confidence="low",
+                reasoning=risky_reasoning,
+                alternatives=risky_alternatives,
+            )
+
         return _empty_recommendation(
             gpu_vram_gb,
             concurrent_users,

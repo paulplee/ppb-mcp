@@ -48,8 +48,10 @@ async def rank_by_priority(
 ) -> RankedQuantizations:
     """Rank all tested quantizations for a model by a composite score.
 
-    USE THIS TOOL when a user wants to know "which quantization is best overall?"
-    for a known GPU and model combination, without specifying a VRAM budget.
+    USE THIS TOOL when the user explicitly asks for a ranked list or wants to know
+    which quantization is "best" by a specific metric (speed, quality, efficiency).
+    For a single-config assessment, use get_combined_scores instead. For a
+    VRAM-aware recommendation, use recommend_quantization instead.
 
     Unlike recommend_quantization (which requires VRAM and user count), this tool
     ranks all tested quants purely on measured performance and/or quality metrics.

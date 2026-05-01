@@ -16,6 +16,10 @@ async def get_qualitative_summary(
     """Get all available qualitative benchmark scores for a model, optionally filtered
     to a specific quantization.
 
+    START HERE for qualitative questions about a specific model. Returns the best
+    single-quant scorecard based on a composite quality score. If you need a
+    cross-quant comparison table, follow up with compare_quants_qualitative.
+
     USE THIS TOOL when a user asks about model quality, context recall ability, tool-call
     accuracy, or MT-Bench scores for a specific model.
 
@@ -62,6 +66,32 @@ async def get_qualitative_summary(
     chosen_model = (
         opt_str(sub["model_base"].iloc[0]) if "model_base" in sub.columns else model
     ) or model
+
+    # When quantization is not specified, pick the quant with the best composite score
+    # rather than the first quant in storage order (which may be BF16, etc.).
+    if quantization is None and "quant" in sub.columns:
+        def _quant_score(rows) -> float:
+            def _v(col: str) -> float:
+                if col not in rows.columns:
+                    return 0.0
+                val = rows[col].dropna()
+                return float(val.iloc[0]) if not val.empty else 0.0
+            rot = _v("context_rot_score")
+            ta = _v("overall_tool_accuracy")
+            mt = _v("mt_bench_score")
+            return rot * 0.3 + ta * 0.4 + (mt / 10.0) * 0.3
+
+        quants = sub["quant"].dropna().unique().tolist()
+        best_quant = None
+        best_score = -1.0
+        for q in quants:
+            q_rows = sub[sub["quant"] == q]
+            score = _quant_score(q_rows)
+            if score > best_score:
+                best_score = score
+                best_quant = q
+        if best_quant is not None and best_score > 0.0:
+            sub = sub[sub["quant"] == best_quant]
 
     phases: list[str] = []
     if "runner_type" in sub.columns:
