@@ -54,6 +54,9 @@ def parse_json_dict(v: Any) -> dict | None:
     return None
 
 
+_QUALITATIVE_RUNNER_TYPES = {"qualitative", "context-rot", "tool-accuracy", "multiturn"}
+
+
 def filter_qualitative(
     df: pd.DataFrame,
     *,
@@ -62,9 +65,11 @@ def filter_qualitative(
     gpu_name: str | None = None,
     runner_type: str | None = None,
 ) -> pd.DataFrame:
-    if "run_type" not in df.columns:
+    # Select rows whose runner_type is qualitative, regardless of the run_type field.
+    # Some rows use run_type="all" with a qualitative runner_type (e.g. Qwen3.5-9B).
+    if "runner_type" not in df.columns:
         return df.iloc[0:0]
-    out = df[df["run_type"] == "qualitative"]
+    out = df[df["runner_type"].isin(_QUALITATIVE_RUNNER_TYPES)]
     if not is_blank(model) and "model_base" in out.columns:
         out = out[out["model_base"].astype(str).str.contains(model, case=False, na=False)]  # type: ignore[arg-type]
     if not is_blank(quantization) and "quant" in out.columns:
