@@ -19,7 +19,11 @@ class BenchmarkRow(BaseModel):
     concurrent_users: int
     tokens_per_second: float  # from throughput_tok_s
     avg_ttft_ms: float | None = None
+    p50_ttft_ms: float | None = None
+    p99_ttft_ms: float | None = None
+    avg_itl_ms: float | None = None
     p50_itl_ms: float | None = None
+    p99_itl_ms: float | None = None
     n_ctx: int | None = None
     backend: str | None = None  # from `backends`
     runner_type: str | None = None  # "llama-bench" | "llama-server" | "llama-server-loadtest"
@@ -27,6 +31,12 @@ class BenchmarkRow(BaseModel):
     max_power_w: float | None = None
     avg_gpu_temp_c: float | None = None
     max_gpu_temp_c: float | None = None
+    # Hardware detail columns (v0.9.0+)
+    unified_memory: bool | None = None
+    gpu_compute_capability: str | None = None
+    gpu_pcie_gen: int | None = None
+    gpu_pcie_width: int | None = None
+    gpu_power_limit_w: float | None = None
     submitter: str | None = None
     timestamp: str | None = None
 
@@ -267,3 +277,66 @@ class RankedQuantizations(BaseModel):
     gpu_name: str
     priority: str
     rows: list[RankedConfig]
+
+
+# ─── New v0.9.0 tools ─────────────────────────────────────────────────────────
+
+
+class HardwareOption(BaseModel):
+    """One GPU option returned by recommend_hardware."""
+
+    gpu_name: str
+    vram_gb: float
+    estimated_msrp_usd: float | None = None
+    tokens_per_second: float
+    tokens_per_dollar: float | None = None
+    avg_power_w: float | None = None
+    tokens_per_watt: float | None = None
+    supports_concurrent_users: int
+    sample_count: int
+    confidence: Literal["high", "medium", "low"]
+
+
+class HardwareRecommendation(BaseModel):
+    """Result of recommend_hardware — ranked GPU options for a target workload."""
+
+    target_model: str
+    target_quantization: str | None
+    concurrent_users: int
+    budget_usd: float | None
+    priority: str
+    recommended: list[HardwareOption]
+    insight: str
+
+
+class ResultExplanation(BaseModel):
+    """Contextual explanation for a single benchmark result."""
+
+    gpu_name: str
+    model: str
+    quantization: str
+    concurrent_users: int
+    tokens_per_second: float | None
+    # VRAM analysis
+    vram_total_gb: float | None
+    vram_estimated_usage_gb: float | None
+    vram_headroom_gb: float | None
+    vram_pressure: Literal["low", "medium", "high", "unknown"]
+    # Latency profile
+    avg_ttft_ms: float | None
+    p99_ttft_ms: float | None
+    avg_itl_ms: float | None
+    # Hardware context
+    pcie_gen: int | None
+    pcie_width: int | None
+    unified_memory: bool | None
+    avg_power_w: float | None
+    # Relative positioning
+    percentile_rank_throughput: float | None = Field(
+        description="Where this result falls among all tested configs for the same model+quant (0–100)"
+    )
+    faster_than_pct: float | None = Field(
+        description="Percentage of comparable configs this one outperforms"
+    )
+    # Natural language summary
+    insight: str

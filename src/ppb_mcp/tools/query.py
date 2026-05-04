@@ -30,6 +30,18 @@ def _row_to_model(r: pd.Series) -> BenchmarkRow:
             return None
         return str(v)
 
+    def _opt_bool(key: str) -> bool | None:
+        v = r.get(key)
+        if v is None or (isinstance(v, float) and math.isnan(v)):
+            return None
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, (int, float)):
+            return bool(v)
+        if isinstance(v, str):
+            return v.lower() in ("true", "1", "yes")
+        return None
+
     vram = r.get("gpu_total_vram_gb")
     if vram is None or (isinstance(vram, float) and math.isnan(vram)):
         vram = r.get("gpu_vram_gb")
@@ -56,10 +68,23 @@ def _row_to_model(r: pd.Series) -> BenchmarkRow:
         concurrent_users=cu,
         tokens_per_second=float(r.get("throughput_tok_s") or 0.0),
         avg_ttft_ms=_opt_float("avg_ttft_ms"),
+        p50_ttft_ms=_opt_float("p50_ttft_ms"),
+        p99_ttft_ms=_opt_float("p99_ttft_ms"),
+        avg_itl_ms=_opt_float("avg_itl_ms"),
         p50_itl_ms=_opt_float("p50_itl_ms"),
+        p99_itl_ms=_opt_float("p99_itl_ms"),
         n_ctx=_opt_int("n_ctx"),
         backend=_opt_str("backends"),
         runner_type=_opt_str("runner_type"),
+        avg_power_w=_opt_float("avg_power_w"),
+        max_power_w=_opt_float("max_power_w"),
+        avg_gpu_temp_c=_opt_float("avg_gpu_temp_c"),
+        max_gpu_temp_c=_opt_float("max_gpu_temp_c"),
+        unified_memory=_opt_bool("unified_memory"),
+        gpu_compute_capability=_opt_str("gpu_compute_capability"),
+        gpu_pcie_gen=_opt_int("gpu_pcie_gen"),
+        gpu_pcie_width=_opt_int("gpu_pcie_width"),
+        gpu_power_limit_w=_opt_float("gpu_power_limit_w"),
         submitter=_opt_str("submitter"),
         timestamp=_opt_str("timestamp"),
     )
@@ -76,6 +101,9 @@ def _apply_filters(
     backend: str | None,
     runner_type: str | None,
     concurrent_users: int | None,
+    run_after: str | None = None,
+    run_before: str | None = None,
+    unified_memory: bool | None = None,
 ) -> pd.DataFrame:
     out = df
     if not is_blank(gpu_name) and "gpu_name" in out.columns:
@@ -96,6 +124,22 @@ def _apply_filters(
         out = out[out["runner_type"].astype(str).str.contains(runner_type, case=False, na=False)]  # type: ignore[arg-type]
     if concurrent_users is not None and "concurrent_users" in out.columns:
         out = out[out["concurrent_users"] == concurrent_users]
+    # Date-range filters on the `timestamp` column (ISO 8601 strings)
+    if (not is_blank(run_after) or not is_blank(run_before)) and "timestamp" in out.columns:
+        ts = pd.to_datetime(out["timestamp"], errors="coerce", utc=True)
+        if not is_blank(run_after):
+            after_dt = pd.to_datetime(run_after, utc=True)
+            out = out[ts >= after_dt]
+        if not is_blank(run_before):
+            before_dt = pd.to_datetime(run_before, utc=True)
+            out = out[ts <= before_dt]
+    # Unified memory filter
+    if unified_memory is not None and "unified_memory" in out.columns:
+        col = out["unified_memory"]
+        if unified_memory:
+            out = out[col.fillna(False).astype(bool)]
+        else:
+            out = out[~col.fillna(False).astype(bool)]
     return out
 
 
@@ -117,6 +161,9 @@ async def query_ppb_results(
     backend: str | None = None,
     runner_type: str | None = None,
     concurrent_users: int | None = None,
+    run_after: str | None = None,
+    run_before: str | None = None,
+    unified_memory: bool | None = None,
     limit: int = 50,
 ) -> QueryResult:
     """Filter raw benchmark rows from PPB.
@@ -147,11 +194,17 @@ async def query_ppb_results(
             "llama-server-loadtest" for real concurrent-user throughput (these numbers are
             NOT comparable — always filter by runner_type when comparing speeds).
         concurrent_users: Exact match on concurrent_users (1, 2, 4, 8, 16, or 32).
+        run_after: ISO 8601 date string — only return rows benchmarked after this date,
+            e.g. "2025-01-01" or "2025-01-01T00:00:00Z".
+        run_before: ISO 8601 date string — only return rows benchmarked before this date.
+        unified_memory: When True, only return Apple Silicon / unified-memory results.
+            When False, return only discrete GPU results.
         limit: Max rows to return (1–500).
 
     Example calls:
         query_ppb_results(gpu_name="Apple M4 Pro", model="Qwen3.5-27B", runner_type="llama-server-loadtest")
         query_ppb_results(model="Qwen3.5-9B", quantization="Q4_K_M", concurrent_users=4)
+        query_ppb_results(run_after="2025-03-01", unified_memory=True)
     """
     limit = max(1, min(int(limit), 500))
     store = PPBDataStore.instance()
@@ -170,6 +223,9 @@ async def query_ppb_results(
             backend,
             runner_type,
             concurrent_users,
+            run_after,
+            run_before,
+            unified_memory,
         )
     )
 
@@ -183,6 +239,9 @@ async def query_ppb_results(
         backend=backend,
         runner_type=runner_type,
         concurrent_users=concurrent_users,
+        run_after=run_after,
+        run_before=run_before,
+        unified_memory=unified_memory,
     )
     filtered_count = len(filtered)
 

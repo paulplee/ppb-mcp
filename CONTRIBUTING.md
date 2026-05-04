@@ -7,8 +7,7 @@ Thanks for your interest! This project ships small, but it's intended to be reli
 ```bash
 git clone https://github.com/paulplee/ppb-mcp
 cd ppb-mcp
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+uv sync --group dev
 ```
 
 ## Quality gates
@@ -16,8 +15,8 @@ pip install -e ".[dev]"
 Before opening a PR, please run:
 
 ```bash
-ruff check src tests
-pytest -v
+uv run ruff check src tests
+uv run pytest -v
 ```
 
 CI runs the same on Python 3.11 and 3.12.

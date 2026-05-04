@@ -14,18 +14,24 @@ Connect any MCP-aware client (Claude Desktop, Cline, Continue, etc.) to ask ques
 
 - _"What's the best quantization for a 32 GB GPU running Qwen3.5-9B with 8 concurrent users?"_
 - _"Show me every model tested at Q4_K_M on the RTX 5090."_
-- _"Will Llama-13B at Q5_K_M fit on a 24 GB GPU at 4 concurrent users?"_
+- _"What GPU should I buy for running 27B models at 4 concurrent users on a $800 budget?"_
+- _"Why is my RTX 5090 result at Q4_K_M slower than I expected?"_
 
-It exposes **nine tools** backed by 30,000+ real benchmark rows:
+It exposes **thirteen tools** backed by 39,000+ real benchmark rows:
 
 ### Quantitative tools
 
-| Tool                     | What it does                                                                      |
-| ------------------------ | --------------------------------------------------------------------------------- |
-| `list_tested_configs`    | Lists every tested GPU, model, and quantization (call this first)                 |
-| `query_ppb_results`      | Filters raw benchmark rows by GPU / VRAM / model / quant / users / backend        |
-| `recommend_quantization` | Three-tier empirical-first recommendation engine (high / medium / low confidence) |
-| `get_gpu_headroom`       | Sanity-checks a (gpu, model, quant, users) configuration for VRAM headroom        |
+| Tool                          | What it does                                                                      |
+| ----------------------------- | --------------------------------------------------------------------------------- |
+| `list_tested_configs`         | Lists every tested GPU, model, and quantization (call this first)                 |
+| `query_ppb_results`           | Filters raw benchmark rows by GPU / VRAM / model / quant / users / backend / date |
+| `recommend_quantization`      | Three-tier empirical-first recommendation engine (high / medium / low confidence) |
+| `recommend_hardware`          | Budget-aware GPU recommendation ranked by speed, efficiency, or value-for-money   |
+| `explain_result`              | Contextual explanation of a result: VRAM pressure, PCIe context, percentile rank  |
+| `get_gpu_headroom`            | Sanity-checks a (gpu, model, quant, users) configuration for VRAM headroom        |
+| `compare_quants_quantitative` | Side-by-side throughput comparison across quantizations for a model + GPU         |
+| `get_combined_scores`         | Quantitative + qualitative metrics in one call for a (gpu, model, quant) config   |
+| `rank_by_priority`            | Rank quantizations by speed, efficiency (tok/W), or a balanced composite score    |
 
 ### Qualitative tools
 
@@ -249,6 +255,23 @@ env MCP_TRANSPORT=stdio ppb-mcp
   "confidence": "high",
   "reasoning": "Q5_K_M is recommended for your NVIDIA GeForce RTX 5090 (32 GB) ...",
   "alternatives": ["Q4_K_M", "Q8_0"] }
+
+> recommend_hardware(target_model="Qwen3.5-27B", target_quantization="Q4_K_M",
+                     concurrent_users=4, budget_usd=1200, priority="value")
+{ "top_picks": [
+    { "gpu": "NVIDIA GeForce RTX 5090", "msrp_usd": 1999, "throughput_tok_s": 94.3,
+      "efficiency_tok_per_dollar": 0.047, "rank_reason": "best measured tok/$ in budget" },
+    ...
+  ],
+  "budget_usd": 1200 }
+
+> explain_result(gpu_name="NVIDIA GeForce RTX 5090", model="Qwen3.5-9B",
+                 quantization="Q4_K_M", concurrent_users=8, n_ctx=32768)
+{ "throughput_tok_s": 142.0,
+  "vram_pressure": "medium",
+  "pcie_context": "PCIe Gen 5 x16 — full bandwidth, no bottleneck expected",
+  "percentile_rank": 0.91,
+  "insight": "Top 9% throughput among all Qwen3.5-9B Q4_K_M configurations measured." }
 ```
 
 ## Configuration
