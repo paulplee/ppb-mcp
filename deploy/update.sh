@@ -19,9 +19,14 @@ INSTALL_DIR="${INSTALL_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 log() { printf '\033[1;34m[update]\033[0m %s\n' "$*"; }
 
 log "Pulling latest code..."
-# When run via sudo, git pull must use the original user's SSH key.
-if [[ -n "${SUDO_USER:-}" ]]; then
-    sudo -u "$SUDO_USER" git -C "$INSTALL_DIR" pull --ff-only
+# sudo strips SSH_AUTH_SOCK, so SSH-based git pull fails under sudo.
+# For public repos, convert the remote URL to HTTPS just for this pull.
+_orig_url=$(git -C "$INSTALL_DIR" remote get-url origin)
+_https_url=$(echo "$_orig_url" | sed 's|git@github\.com:|https://github.com/|')
+if [[ "$_orig_url" != "$_https_url" ]]; then
+    git -C "$INSTALL_DIR" remote set-url origin "$_https_url"
+    git -C "$INSTALL_DIR" pull --ff-only || { git -C "$INSTALL_DIR" remote set-url origin "$_orig_url"; exit 1; }
+    git -C "$INSTALL_DIR" remote set-url origin "$_orig_url"
 else
     git -C "$INSTALL_DIR" pull --ff-only
 fi
