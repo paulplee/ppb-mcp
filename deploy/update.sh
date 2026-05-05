@@ -13,7 +13,8 @@
 
 set -euo pipefail
 
-INSTALL_DIR="${INSTALL_DIR:-/opt/ppb-mcp}"
+# Default to the repo root (one level up from this script's directory).
+INSTALL_DIR="${INSTALL_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 
 log() { printf '\033[1;34m[update]\033[0m %s\n' "$*"; }
 
