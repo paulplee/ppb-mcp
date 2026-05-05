@@ -18,7 +18,12 @@ INSTALL_DIR="${INSTALL_DIR:-/opt/ppb-mcp}"
 log() { printf '\033[1;34m[update]\033[0m %s\n' "$*"; }
 
 log "Pulling latest code..."
-git -C "$INSTALL_DIR" pull --ff-only
+# When run via sudo, git pull must use the original user's SSH key.
+if [[ -n "${SUDO_USER:-}" ]]; then
+    sudo -u "$SUDO_USER" git -C "$INSTALL_DIR" pull --ff-only
+else
+    git -C "$INSTALL_DIR" pull --ff-only
+fi
 
 log "Rebuilding Docker image..."
 docker compose -f "$INSTALL_DIR/docker-compose.yml" build --pull
