@@ -119,13 +119,33 @@ app.tool(get_tool_accuracy_breakdown)
 app.tool(compare_quants_qualitative)
 
 
-# /health endpoint for Docker healthcheck and Lightsail monitoring (HTTP transport only).
+# REST API endpoints (HTTP transport only).
 try:
     from starlette.requests import Request
     from starlette.responses import JSONResponse
 
+    # ── Allowed origins for CORS ─────────────────────────────────────────────
+    _CORS_ORIGINS = [
+        "https://poorpaul.dev",
+        "https://www.poorpaul.dev",
+    ]
+
+    def _cors_headers(request: Request) -> dict[str, str]:
+        origin = request.headers.get("origin", "")
+        allowed = origin if origin in _CORS_ORIGINS or origin.startswith("http://localhost") else ""
+        headers: dict[str, str] = {
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type",
+            "Cache-Control": "public, max-age=60",
+        }
+        if allowed:
+            headers["Access-Control-Allow-Origin"] = allowed
+        return headers
+
+    # ── /health ──────────────────────────────────────────────────────────────
+
     @app.custom_route("/health", methods=["GET"])
-    async def health(_request: Request) -> JSONResponse:
+    async def health(request: Request) -> JSONResponse:
         store = PPBDataStore.instance()
         return JSONResponse(
             {
@@ -136,10 +156,242 @@ try:
                 "last_refreshed": store.get_last_refreshed(),
                 "db_path": str(store._cache.db_path),
                 "cache_row_count": store._cache.row_count(),
-            }
+            },
+            headers=_cors_headers(request),
         )
+
+    # ── /api/v1/summary ──────────────────────────────────────────────────────
+
+    @app.custom_route("/api/v1/summary", methods=["GET"])
+    async def api_summary(request: Request) -> JSONResponse:
+        """List all tested GPUs, models, quantizations, runner types, and row count."""
+        result = await list_tested_configs()
+        return JSONResponse(result.model_dump(), headers=_cors_headers(request))
+
+    # ── /api/v1/hardware ─────────────────────────────────────────────────────
+
+    @app.custom_route("/api/v1/hardware", methods=["GET"])
+    async def api_hardware(request: Request) -> JSONResponse:
+        """List GPUs with VRAM and result counts."""
+        store = PPBDataStore.instance()
+        await store.ensure_loaded()
+        df = await store.get_df()
+        rows: list[dict] = []
+        if not df.empty and "gpu_name" in df.columns:
+            vram_col = "gpu_total_vram_gb" if "gpu_total_vram_gb" in df.columns else "gpu_vram_gb"
+            quant_df = df[df.get("run_type", "quantitative") != "qualitative"] if "run_type" in df.columns else df
+            for gpu, grp in quant_df.groupby("gpu_name", dropna=True):
+                vram = None
+                if vram_col in grp.columns:
+                    v = grp[vram_col].dropna()
+                    if not v.empty:
+                        vram = round(float(v.iloc[0]), 1)
+                rows.append({
+                    "gpu_name": str(gpu),
+                    "gpu_vram_gb": vram,
+                    "result_count": int(len(grp)),
+                })
+            rows.sort(key=lambda r: r["result_count"], reverse=True)
+        return JSONResponse({"hardware": rows}, headers=_cors_headers(request))
+
+    # ── /api/v1/models ───────────────────────────────────────────────────────
+
+    @app.custom_route("/api/v1/models", methods=["GET"])
+    async def api_models(request: Request) -> JSONResponse:
+        """List models with available quantizations and result counts."""
+        store = PPBDataStore.instance()
+        await store.ensure_loaded()
+        df = await store.get_df()
+        rows: list[dict] = []
+        if not df.empty and "model_base" in df.columns:
+            quant_df = df[df["run_type"] != "qualitative"] if "run_type" in df.columns else df
+            for model, grp in quant_df.groupby("model_base", dropna=True):
+                quants = sorted(grp["quant"].dropna().unique().tolist()) if "quant" in grp.columns else []
+                runner_types = sorted(grp["runner_type"].dropna().unique().tolist()) if "runner_type" in grp.columns else []
+                rows.append({
+                    "model": str(model),
+                    "quantizations": quants,
+                    "runner_types": runner_types,
+                    "result_count": int(len(grp)),
+                })
+            rows.sort(key=lambda r: r["result_count"], reverse=True)
+        return JSONResponse({"models": rows}, headers=_cors_headers(request))
+
+    # ── /api/v1/results ──────────────────────────────────────────────────────
+
+    @app.custom_route("/api/v1/results", methods=["GET"])
+    async def api_results(request: Request) -> JSONResponse:
+        """Query benchmark results with optional filters.
+
+        Query params (all optional): gpu, model, quant, runner_type,
+        concurrent_users (int), vram_min (float), vram_max (float),
+        unified_memory (true/false), run_after (ISO8601), run_before (ISO8601),
+        limit (int, max 500, default 100).
+        """
+        p = request.query_params
+        concurrent_users: int | None = None
+        if p.get("concurrent_users"):
+            try:
+                concurrent_users = int(p["concurrent_users"])
+            except ValueError:
+                pass
+        vram_gb_min: float | None = None
+        if p.get("vram_min"):
+            try:
+                vram_gb_min = float(p["vram_min"])
+            except ValueError:
+                pass
+        vram_gb_max: float | None = None
+        if p.get("vram_max"):
+            try:
+                vram_gb_max = float(p["vram_max"])
+            except ValueError:
+                pass
+        unified_memory: bool | None = None
+        if p.get("unified_memory"):
+            unified_memory = p["unified_memory"].lower() in ("true", "1", "yes")
+        limit = min(int(p.get("limit", 100)), 500)
+
+        result = await query_ppb_results(
+            gpu_name=p.get("gpu") or None,
+            vram_gb_min=vram_gb_min,
+            vram_gb_max=vram_gb_max,
+            model=p.get("model") or None,
+            quantization=p.get("quant") or None,
+            backend=None,
+            runner_type=p.get("runner_type") or None,
+            concurrent_users=concurrent_users,
+            run_after=p.get("run_after") or None,
+            run_before=p.get("run_before") or None,
+            unified_memory=unified_memory,
+            limit=limit,
+        )
+        return JSONResponse(result.model_dump(), headers=_cors_headers(request))
+
+    # ── /api/v1/qualitative ──────────────────────────────────────────────────
+
+    @app.custom_route("/api/v1/qualitative", methods=["GET"])
+    async def api_qualitative(request: Request) -> JSONResponse:
+        """Query qualitative benchmark results with optional filters.
+
+        Query params: model, quant (exact), gpu, runner_type,
+        min_context_rot, min_tool_accuracy, min_mt_bench,
+        limit (int, max 200, default 50).
+        """
+        p = request.query_params
+        min_context_rot: float | None = None
+        if p.get("min_context_rot"):
+            try:
+                min_context_rot = float(p["min_context_rot"])
+            except ValueError:
+                pass
+        min_tool_accuracy: float | None = None
+        if p.get("min_tool_accuracy"):
+            try:
+                min_tool_accuracy = float(p["min_tool_accuracy"])
+            except ValueError:
+                pass
+        min_mt_bench: float | None = None
+        if p.get("min_mt_bench"):
+            try:
+                min_mt_bench = float(p["min_mt_bench"])
+            except ValueError:
+                pass
+        limit = min(int(p.get("limit", 50)), 200)
+
+        result = await query_qualitative_results(
+            model=p.get("model") or None,
+            quantization=p.get("quant") or None,
+            gpu_name=p.get("gpu") or None,
+            runner_type=p.get("runner_type") or None,
+            min_context_rot_score=min_context_rot,
+            min_overall_tool_accuracy=min_tool_accuracy,
+            min_mt_bench_score=min_mt_bench,
+            limit=limit,
+        )
+        return JSONResponse(result.model_dump(), headers=_cors_headers(request))
+
+    # ── /api/v1/compare/quants ───────────────────────────────────────────────
+
+    @app.custom_route("/api/v1/compare/quants", methods=["GET"])
+    async def api_compare_quants(request: Request) -> JSONResponse:
+        """Compare quantizations for a model across quantitative + qualitative metrics.
+
+        Query params: model (required), gpu, runner_type, concurrent_users (int).
+        """
+        p = request.query_params
+        model = p.get("model") or ""
+        if not model:
+            return JSONResponse(
+                {"error": "model parameter is required"},
+                status_code=400,
+                headers=_cors_headers(request),
+            )
+        concurrent_users: int | None = None
+        if p.get("concurrent_users"):
+            try:
+                concurrent_users = int(p["concurrent_users"])
+            except ValueError:
+                pass
+
+        quant_result = await compare_quants_quantitative(
+            model=model,
+            gpu_name=p.get("gpu") or None,
+            runner_type=p.get("runner_type") or None,
+            concurrent_users=concurrent_users,
+        )
+        return JSONResponse(quant_result.model_dump(), headers=_cors_headers(request))
+
+    # ── /api/v1/context-rot ──────────────────────────────────────────────────
+
+    @app.custom_route("/api/v1/context-rot", methods=["GET"])
+    async def api_context_rot(request: Request) -> JSONResponse:
+        """Get context-rot breakdown for a model × quant × GPU.
+
+        Query params: model (required), quant (required, exact), gpu.
+        """
+        p = request.query_params
+        model = p.get("model") or ""
+        quant = p.get("quant") or ""
+        if not model or not quant:
+            return JSONResponse(
+                {"error": "model and quant parameters are required"},
+                status_code=400,
+                headers=_cors_headers(request),
+            )
+        result = await get_context_rot_breakdown(
+            model=model,
+            quantization=quant,
+            gpu_name=p.get("gpu") or None,
+        )
+        return JSONResponse(result.model_dump(), headers=_cors_headers(request))
+
+    # ── /api/v1/tool-accuracy ────────────────────────────────────────────────
+
+    @app.custom_route("/api/v1/tool-accuracy", methods=["GET"])
+    async def api_tool_accuracy(request: Request) -> JSONResponse:
+        """Get tool-accuracy breakdown for a model × quant × GPU.
+
+        Query params: model (required), quant (required, exact), gpu.
+        """
+        p = request.query_params
+        model = p.get("model") or ""
+        quant = p.get("quant") or ""
+        if not model or not quant:
+            return JSONResponse(
+                {"error": "model and quant parameters are required"},
+                status_code=400,
+                headers=_cors_headers(request),
+            )
+        result = await get_tool_accuracy_breakdown(
+            model=model,
+            quantization=quant,
+            gpu_name=p.get("gpu") or None,
+        )
+        return JSONResponse(result.model_dump(), headers=_cors_headers(request))
+
 except ImportError:
-    # starlette is pulled in by fastmcp; if it's missing, /health is unavailable but stdio still works.
+    # starlette is pulled in by fastmcp; if it's missing, REST endpoints are unavailable but stdio still works.
     pass
 
 
