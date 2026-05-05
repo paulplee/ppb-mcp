@@ -194,13 +194,39 @@ class PPBDataStore:
             self._loaded = True
             return
 
-        repo_files = api.list_repo_files(self.dataset, repo_type="dataset")
+        repo_files = list(api.list_repo_files(self.dataset, repo_type="dataset"))
         shards = [f for f in repo_files if f.endswith(".jsonl")]
-        if not shards:
-            raise RuntimeError(f"No .jsonl shards found in dataset {self.dataset!r}")
+        parquet_files = [f for f in repo_files if f.endswith(".parquet")]
 
         rows_added = 0
         shards_synced = 0
+
+        # Load any parquet bulk-export files first (e.g. ppb_results_v090.parquet).
+        # These are treated as a single shard keyed by filename.
+        for pq_file in parquet_files:
+            already_synced_etag = self._cache.get_shard_etag(pq_file)
+            if (
+                not force_redownload
+                and already_synced_etag is not None
+                and remote_commit is not None
+                and already_synced_etag == remote_commit
+            ):
+                continue
+            local_pq = hf_hub_download(
+                self.dataset,
+                pq_file,
+                repo_type="dataset",
+                force_download=force_redownload,
+            )
+            pq_rows = pd.read_parquet(local_pq).to_dict(orient="records")
+            rows_added += self._cache.upsert_rows(pq_rows, pq_file)
+            self._cache.update_shard_meta(pq_file, remote_commit or "unknown")
+            shards_synced += 1
+            logger.info("Loaded parquet %s: %d rows", pq_file, len(pq_rows))
+
+        if not shards and not parquet_files:
+            raise RuntimeError(f"No .jsonl or .parquet files found in dataset {self.dataset!r}")
+
         for shard in shards:
             already_synced_etag = self._cache.get_shard_etag(shard)
             if (
