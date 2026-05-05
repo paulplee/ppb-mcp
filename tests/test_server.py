@@ -1,4 +1,5 @@
 """Tests for the FastMCP server registration."""
+
 from __future__ import annotations
 
 import pytest
@@ -10,7 +11,12 @@ async def test_four_tools_registered() -> None:
 
     tools = await app.list_tools()
     names = {t.name for t in tools}
-    assert {"list_tested_configs", "query_ppb_results", "recommend_quantization", "get_gpu_headroom"} <= names
+    assert {
+        "list_tested_configs",
+        "query_ppb_results",
+        "recommend_quantization",
+        "get_gpu_headroom",
+    } <= names
 
 
 @pytest.mark.asyncio
@@ -33,6 +39,7 @@ async def test_tool_schemas_have_descriptions() -> None:
 
 def test_rest_health(store) -> None:  # noqa: ANN001 - fixture
     from starlette.testclient import TestClient
+
     from ppb_mcp.server import app
 
     with TestClient(app.http_app()) as client:
@@ -46,6 +53,7 @@ def test_rest_health(store) -> None:  # noqa: ANN001 - fixture
 
 def test_rest_summary(store) -> None:
     from starlette.testclient import TestClient
+
     from ppb_mcp.server import app
 
     with TestClient(app.http_app()) as client:
@@ -61,6 +69,7 @@ def test_rest_summary(store) -> None:
 
 def test_rest_hardware(store) -> None:
     from starlette.testclient import TestClient
+
     from ppb_mcp.server import app
 
     with TestClient(app.http_app()) as client:
@@ -76,6 +85,7 @@ def test_rest_hardware(store) -> None:
 
 def test_rest_models(store) -> None:
     from starlette.testclient import TestClient
+
     from ppb_mcp.server import app
 
     with TestClient(app.http_app()) as client:
@@ -92,6 +102,7 @@ def test_rest_models(store) -> None:
 
 def test_rest_results(store) -> None:
     from starlette.testclient import TestClient
+
     from ppb_mcp.server import app
 
     with TestClient(app.http_app()) as client:
@@ -106,6 +117,7 @@ def test_rest_results(store) -> None:
 
 def test_rest_results_with_gpu_filter(store) -> None:
     from starlette.testclient import TestClient
+
     from ppb_mcp.server import app
 
     with TestClient(app.http_app()) as client:
@@ -117,6 +129,7 @@ def test_rest_results_with_gpu_filter(store) -> None:
 
 def test_rest_compare_quants_requires_model(store) -> None:
     from starlette.testclient import TestClient
+
     from ppb_mcp.server import app
 
     with TestClient(app.http_app()) as client:
@@ -126,6 +139,7 @@ def test_rest_compare_quants_requires_model(store) -> None:
 
 def test_rest_compare_quants(store) -> None:
     from starlette.testclient import TestClient
+
     from ppb_mcp.server import app
 
     with TestClient(app.http_app()) as client:
@@ -138,6 +152,7 @@ def test_rest_compare_quants(store) -> None:
 
 def test_rest_context_rot_requires_params(store) -> None:
     from starlette.testclient import TestClient
+
     from ppb_mcp.server import app
 
     with TestClient(app.http_app()) as client:
@@ -147,6 +162,7 @@ def test_rest_context_rot_requires_params(store) -> None:
 
 def test_rest_tool_accuracy_requires_params(store) -> None:
     from starlette.testclient import TestClient
+
     from ppb_mcp.server import app
 
     with TestClient(app.http_app()) as client:
@@ -156,6 +172,7 @@ def test_rest_tool_accuracy_requires_params(store) -> None:
 
 def test_rest_cors_header_for_poorpaul(store) -> None:
     from starlette.testclient import TestClient
+
     from ppb_mcp.server import app
 
     with TestClient(app.http_app()) as client:
@@ -166,10 +183,10 @@ def test_rest_cors_header_for_poorpaul(store) -> None:
 
 def test_rest_no_cors_for_unknown_origin(store) -> None:
     from starlette.testclient import TestClient
+
     from ppb_mcp.server import app
 
     with TestClient(app.http_app()) as client:
         r = client.get("/api/v1/summary", headers={"Origin": "https://evil.example.com"})
     assert r.status_code == 200
     assert "access-control-allow-origin" not in r.headers
-

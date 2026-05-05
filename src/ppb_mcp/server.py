@@ -179,18 +179,24 @@ try:
         rows: list[dict] = []
         if not df.empty and "gpu_name" in df.columns:
             vram_col = "gpu_total_vram_gb" if "gpu_total_vram_gb" in df.columns else "gpu_vram_gb"
-            quant_df = df[df.get("run_type", "quantitative") != "qualitative"] if "run_type" in df.columns else df
+            quant_df = (
+                df[df.get("run_type", "quantitative") != "qualitative"]
+                if "run_type" in df.columns
+                else df
+            )
             for gpu, grp in quant_df.groupby("gpu_name", dropna=True):
                 vram = None
                 if vram_col in grp.columns:
                     v = grp[vram_col].dropna()
                     if not v.empty:
                         vram = round(float(v.iloc[0]), 1)
-                rows.append({
-                    "gpu_name": str(gpu),
-                    "gpu_vram_gb": vram,
-                    "result_count": int(len(grp)),
-                })
+                rows.append(
+                    {
+                        "gpu_name": str(gpu),
+                        "gpu_vram_gb": vram,
+                        "result_count": int(len(grp)),
+                    }
+                )
             rows.sort(key=lambda r: r["result_count"], reverse=True)
         return JSONResponse({"hardware": rows}, headers=_cors_headers(request))
 
@@ -206,14 +212,24 @@ try:
         if not df.empty and "model_base" in df.columns:
             quant_df = df[df["run_type"] != "qualitative"] if "run_type" in df.columns else df
             for model, grp in quant_df.groupby("model_base", dropna=True):
-                quants = sorted(grp["quant"].dropna().unique().tolist()) if "quant" in grp.columns else []
-                runner_types = sorted(grp["runner_type"].dropna().unique().tolist()) if "runner_type" in grp.columns else []
-                rows.append({
-                    "model": str(model),
-                    "quantizations": quants,
-                    "runner_types": runner_types,
-                    "result_count": int(len(grp)),
-                })
+                quants = (
+                    sorted(grp["quant"].dropna().unique().tolist())
+                    if "quant" in grp.columns
+                    else []
+                )
+                runner_types = (
+                    sorted(grp["runner_type"].dropna().unique().tolist())
+                    if "runner_type" in grp.columns
+                    else []
+                )
+                rows.append(
+                    {
+                        "model": str(model),
+                        "quantizations": quants,
+                        "runner_types": runner_types,
+                        "result_count": int(len(grp)),
+                    }
+                )
             rows.sort(key=lambda r: r["result_count"], reverse=True)
         return JSONResponse({"models": rows}, headers=_cors_headers(request))
 
