@@ -266,7 +266,11 @@ try:
         unified_memory: bool | None = None
         if p.get("unified_memory"):
             unified_memory = p["unified_memory"].lower() in ("true", "1", "yes")
-        limit = min(int(p.get("limit", 100)), 500)
+        # Allow a larger page when both gpu and model are specified — the
+        # client fetches the full user slice in one shot for the Insights page.
+        has_filter = bool(p.get("gpu") and p.get("model"))
+        max_limit = 5000 if has_filter else 500
+        limit = min(int(p.get("limit", 100)), max_limit)
 
         result = await query_ppb_results(
             gpu_name=p.get("gpu") or None,
