@@ -125,6 +125,12 @@ def _apply_filters(
     if concurrent_users is not None and "concurrent_users" in out.columns:
         out = out[out["concurrent_users"] == concurrent_users]
     # Date-range filters on the `timestamp` column (ISO 8601 strings)
+    # Strip surrounding quotes/whitespace that some LLM clients accidentally include
+    # e.g. the LLM sends "\"2026-05-05\"" instead of "2026-05-05"
+    if run_after:
+        run_after = run_after.strip().strip("\"'")
+    if run_before:
+        run_before = run_before.strip().strip("\"'")
     if (not is_blank(run_after) or not is_blank(run_before)) and "timestamp" in out.columns:
         if not is_blank(run_after):
             ts = pd.to_datetime(out["timestamp"], errors="coerce", utc=True)
