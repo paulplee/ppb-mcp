@@ -288,7 +288,7 @@ class PPBDataStore:
                     lambda: self._incremental_sync(force_redownload=False)
                 )
                 # _incremental_sync already updated self._df and self._last_refreshed safely.
-        except (HfHubHTTPError, OSError, RuntimeError, ValueError) as exc:
+        except (HfHubHTTPError, OSError, RuntimeError, ValueError, ImportError) as exc:
             logger.error("Dataset refresh failed; serving stale cache. Error: %s", exc)
             return False
         logger.info("Refreshed PPB dataset: shape=%s", self._df.shape)
