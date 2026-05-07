@@ -188,8 +188,11 @@ async def query_ppb_results(
     "null" — it will not match any GPU and returns zero results.
 
     All filters are optional and AND-combined. String filters are case-insensitive
-    partial matches except `quantization` (exact). When called with no filters,
-    returns a stratified diverse sample (one row per gpu × model × quant combo).
+    partial matches except `quantization` (exact). When the number of matching rows
+    exceeds `limit`, returns a stratified diverse sample (one row per gpu × model ×
+    quant combo) so results span all contributing hardware, not just the first GPU
+    whose data happens to be stored earliest. When results fit within `limit`, all
+    rows are returned in storage order.
     Never raises on empty results — returns rows=[].
 
     Args:
@@ -254,7 +257,7 @@ async def query_ppb_results(
     )
     filtered_count = len(filtered)
 
-    if no_filters:
+    if no_filters or filtered_count > limit:
         result = _stratified_sample(filtered, limit)
     else:
         result = filtered.head(limit)
