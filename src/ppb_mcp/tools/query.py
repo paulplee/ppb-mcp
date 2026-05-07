@@ -126,13 +126,22 @@ def _apply_filters(
         out = out[out["concurrent_users"] == concurrent_users]
     # Date-range filters on the `timestamp` column (ISO 8601 strings)
     if (not is_blank(run_after) or not is_blank(run_before)) and "timestamp" in out.columns:
-        ts = pd.to_datetime(out["timestamp"], errors="coerce", utc=True)
         if not is_blank(run_after):
-            after_dt = pd.to_datetime(run_after, utc=True)
-            out = out[ts >= after_dt]
+            ts = pd.to_datetime(out["timestamp"], errors="coerce", utc=True)
+            after_ts = pd.Timestamp(run_after)
+            if after_ts.tzinfo is None:
+                after_ts = after_ts.tz_localize("UTC")
+            else:
+                after_ts = after_ts.tz_convert("UTC")
+            out = out.loc[ts >= after_ts]
         if not is_blank(run_before):
-            before_dt = pd.to_datetime(run_before, utc=True)
-            out = out[ts <= before_dt]
+            ts = pd.to_datetime(out["timestamp"], errors="coerce", utc=True)
+            before_ts = pd.Timestamp(run_before)
+            if before_ts.tzinfo is None:
+                before_ts = before_ts.tz_localize("UTC")
+            else:
+                before_ts = before_ts.tz_convert("UTC")
+            out = out.loc[ts <= before_ts]
     # Unified memory filter
     if unified_memory is not None and "unified_memory" in out.columns:
         col = out["unified_memory"]
