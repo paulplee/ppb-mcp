@@ -17,7 +17,7 @@ class BenchmarkRow(BaseModel):
     model_full_path: str | None = None  # from raw `model` column
     quantization: str
     concurrent_users: int
-    tokens_per_second: float  # from throughput_tok_s
+    tokens_per_second: float | None = None  # from throughput_tok_s
     avg_ttft_ms: float | None = None
     p50_ttft_ms: float | None = None
     p99_ttft_ms: float | None = None

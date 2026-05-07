@@ -187,8 +187,11 @@ async def query_ppb_results(
     or VRAM figures for a specific GPU, model, or quantization.
 
     IMPORTANT — always filter by runner_type when comparing speeds:
-      - "llama-bench"            → raw throughput (tok/s), no concurrency
-      - "llama-server-loadtest"  → real concurrent-user throughput (lower numbers, more realistic)
+      - "llama-server"           → concurrent-user throughput (tok/s), TTFT, ITL
+      - "context-rot"            → context rotation / long-context benchmarks
+      - "multiturn"              → multi-turn conversation benchmarks
+      - "qualitative"            → qualitative quality scores
+      - "tool-accuracy"          → tool-calling accuracy
 
     NOTE: To omit a filter, EXCLUDE the parameter entirely. Do NOT pass the string
     "null" — it will not match any GPU and returns zero results.
@@ -208,9 +211,9 @@ async def query_ppb_results(
         model: Partial match on model_base, e.g. "Qwen3.5-9B".
         quantization: Exact match on quantization label, e.g. "Q4_K_M".
         backend: Partial match on backend, e.g. "CUDA" or "Metal".
-        runner_type: Filter by benchmark runner. Use "llama-bench" for raw throughput,
-            "llama-server-loadtest" for real concurrent-user throughput (these numbers are
-            NOT comparable — always filter by runner_type when comparing speeds).
+        runner_type: Filter by benchmark runner. One of: "llama-server" (throughput/TTFT/ITL),
+            "context-rot", "multiturn", "qualitative", "tool-accuracy". Results from different
+            runner types are NOT comparable — always filter by runner_type when comparing speeds.
         concurrent_users: Exact match on concurrent_users (1, 2, 4, 8, 16, or 32).
         run_after: ISO 8601 date string — only return rows benchmarked after this date,
             e.g. "2025-01-01" or "2025-01-01T00:00:00Z".
