@@ -105,7 +105,22 @@ async def query_qualitative_results(
         sub = sub[sub["mt_bench_score"].fillna(-1.0) >= min_mt_bench_score]
 
     filtered_count = len(sub)
-    page = sub.head(limit)
+    if filtered_count > limit:
+        # Stratified sample: allocate limit slots across GPUs proportionally so
+        # all GPUs are represented even when limit < filtered_count.
+        needed = [c for c in ("gpu_name", "model_base", "quant", "runner_type") if c in sub.columns]
+        deduped = sub.drop_duplicates(subset=needed, keep="first") if needed else sub
+        gpus = deduped["gpu_name"].dropna().unique().tolist() if "gpu_name" in deduped.columns else []
+        if gpus:
+            per_gpu = max(1, limit // len(gpus))
+            pieces = []
+            for g in gpus:
+                pieces.append(deduped[deduped["gpu_name"] == g].head(per_gpu))
+            page = pd.concat(pieces).head(limit)
+        else:
+            page = deduped.head(limit)
+    else:
+        page = sub
     rows = [_row_to_model(r) for _, r in page.iterrows()]
     return QualitativeQueryResult(
         rows=rows,
