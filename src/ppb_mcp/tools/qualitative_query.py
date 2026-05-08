@@ -110,7 +110,9 @@ async def query_qualitative_results(
         # all GPUs are represented even when limit < filtered_count.
         needed = [c for c in ("gpu_name", "model_base", "quant", "runner_type") if c in sub.columns]
         deduped = sub.drop_duplicates(subset=needed, keep="first") if needed else sub
-        gpus = deduped["gpu_name"].dropna().unique().tolist() if "gpu_name" in deduped.columns else []
+        gpus = (
+            deduped["gpu_name"].dropna().unique().tolist() if "gpu_name" in deduped.columns else []
+        )
         if gpus:
             per_gpu = max(1, limit // len(gpus))
             pieces = []
