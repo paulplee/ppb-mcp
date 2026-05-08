@@ -52,9 +52,7 @@ async def get_qualitative_summary(
 
     # Determine which GPUs to produce a summary for.
     if not is_blank(gpu_name) or "gpu_name" not in sub.columns:
-        gpu_list = [
-            opt_str(sub["gpu_name"].iloc[0]) if "gpu_name" in sub.columns else gpu_name
-        ]
+        gpu_list = [opt_str(sub["gpu_name"].iloc[0]) if "gpu_name" in sub.columns else gpu_name]
     else:
         gpu_list = sub["gpu_name"].dropna().astype(str).unique().tolist()
 
@@ -101,7 +99,9 @@ async def get_qualitative_summary(
                 return None
             return opt_float(first_non_null(working[col]))
 
-        suite_id = opt_str(first_non_null(working["suite_id"])) if "suite_id" in working.columns else None
+        suite_id = (
+            opt_str(first_non_null(working["suite_id"])) if "suite_id" in working.columns else None
+        )
         bench_v = (
             opt_str(first_non_null(working["benchmark_version"]))
             if "benchmark_version" in working.columns
