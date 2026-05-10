@@ -34,9 +34,7 @@ class ResultsQueryParams(BaseModel):
     @classmethod
     def _validate_concurrent_users(cls, v: int | None) -> int | None:
         if v is not None and v not in _VALID_CONCURRENT_USERS:
-            raise ValueError(
-                f"concurrent_users must be one of: {sorted(_VALID_CONCURRENT_USERS)}"
-            )
+            raise ValueError(f"concurrent_users must be one of: {sorted(_VALID_CONCURRENT_USERS)}")
         return v
 
     @field_validator("vram_min", "vram_max")
@@ -79,9 +77,7 @@ class CompareQueryParams(BaseModel):
     @classmethod
     def _validate_concurrent_users(cls, v: int | None) -> int | None:
         if v is not None and v not in _VALID_CONCURRENT_USERS:
-            raise ValueError(
-                f"concurrent_users must be one of: {sorted(_VALID_CONCURRENT_USERS)}"
-            )
+            raise ValueError(f"concurrent_users must be one of: {sorted(_VALID_CONCURRENT_USERS)}")
         return v
 
 
