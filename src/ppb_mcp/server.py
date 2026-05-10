@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import collections
+import json
 import logging
 import os
 import sys
+import time
 from contextlib import asynccontextmanager
 
 import anyio
@@ -56,6 +59,76 @@ class _AcceptPatchMiddleware:
                 new_headers.append((b"accept", new_accept.encode("latin-1")))
                 scope = dict(scope)
                 scope["headers"] = new_headers
+        await self.app(scope, receive, send)
+
+
+def _parse_rate_limit() -> tuple[int, int]:
+    """Parse RATE_LIMIT env var (e.g. '60/minute', '200/hour'). Returns (max_requests, window_seconds)."""
+    raw = os.environ.get("RATE_LIMIT", "60/minute")
+    try:
+        count_str, period = raw.split("/", 1)
+        count = int(count_str.strip())
+        period = period.strip().lower()
+        if period in ("second", "sec", "s"):
+            window = 1
+        elif period in ("hour", "hr", "h"):
+            window = 3600
+        else:  # minute (default)
+            window = 60
+        return count, window
+    except (ValueError, AttributeError):
+        return 60, 60
+
+
+class _RateLimitMiddleware:
+    """Sliding-window IP rate limiter for /api/ endpoints.
+
+    Reads the RATE_LIMIT environment variable (e.g. ``"60/minute"``, ``"200/hour"``).
+    Applies only to paths starting with ``/api/``; the MCP protocol path (``/mcp``)
+    and ``/health`` are intentionally left unthrottled.
+
+    Because asyncio is single-threaded cooperative multitasking, the per-IP
+    sliding-window updates are atomic without an additional lock.
+    """
+
+    def __init__(self, app: ASGIApp, max_requests: int = 60, window_seconds: int = 60) -> None:
+        self.app = app
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self._store: dict[str, collections.deque] = {}
+
+    def _client_ip(self, scope: Scope) -> str:
+        headers = {k: v for k, v in scope.get("headers", [])}
+        xff = headers.get(b"x-forwarded-for", b"").decode("latin-1")
+        if xff:
+            return xff.split(",")[0].strip()
+        client = scope.get("client")
+        return client[0] if client else "unknown"
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http" and scope.get("path", "").startswith("/api/"):
+            ip = self._client_ip(scope)
+            now = time.monotonic()
+            window = self._store.setdefault(ip, collections.deque())
+            cutoff = now - self.window_seconds
+            while window and window[0] < cutoff:
+                window.popleft()
+            if len(window) >= self.max_requests:
+                retry_after = max(1, int(self.window_seconds - (now - window[0])))
+                body = json.dumps({"error": "Rate limit exceeded. Try again later."}).encode()
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 429,
+                        "headers": [
+                            (b"content-type", b"application/json"),
+                            (b"retry-after", str(retry_after).encode()),
+                        ],
+                    }
+                )
+                await send({"type": "http.response.body", "body": body})
+                return
+            window.append(now)
         await self.app(scope, receive, send)
 
 
@@ -121,13 +194,23 @@ app.tool(compare_quants_qualitative)
 
 # REST API endpoints (HTTP transport only).
 try:
+    from pydantic import ValidationError
     from starlette.requests import Request
     from starlette.responses import JSONResponse
+
+    from ppb_mcp.rest_schemas import (
+        CompareQueryParams,
+        ContextRotQueryParams,
+        QualitativeQueryParams,
+        ResultsQueryParams,
+        ToolAccuracyQueryParams,
+    )
 
     # ── Allowed origins for CORS ─────────────────────────────────────────────
     _CORS_ORIGINS = [
         "https://poorpaul.dev",
         "https://www.poorpaul.dev",
+        "https://mcp.poorpaul.dev",
     ]
 
     def _cors_headers(request: Request) -> dict[str, str]:
@@ -240,51 +323,36 @@ try:
         """Query benchmark results with optional filters.
 
         Query params (all optional): gpu, model, quant, runner_type,
-        concurrent_users (int), vram_min (float), vram_max (float),
-        unified_memory (true/false), run_after (ISO8601), run_before (ISO8601),
-        limit (int, max 500, default 100).
+        concurrent_users (int, one of 1/2/4/8/16/32), vram_min (float ≥ 0),
+        vram_max (float ≥ 0), unified_memory (true/false),
+        run_after (ISO8601), run_before (ISO8601), limit (int 1–5000, default 100).
         """
-        p = request.query_params
-        concurrent_users: int | None = None
-        if p.get("concurrent_users"):
-            try:
-                concurrent_users = int(p["concurrent_users"])
-            except ValueError:
-                pass
-        vram_gb_min: float | None = None
-        if p.get("vram_min"):
-            try:
-                vram_gb_min = float(p["vram_min"])
-            except ValueError:
-                pass
-        vram_gb_max: float | None = None
-        if p.get("vram_max"):
-            try:
-                vram_gb_max = float(p["vram_max"])
-            except ValueError:
-                pass
-        unified_memory: bool | None = None
-        if p.get("unified_memory"):
-            unified_memory = p["unified_memory"].lower() in ("true", "1", "yes")
+        try:
+            params = ResultsQueryParams(**dict(request.query_params))
+        except ValidationError as exc:
+            return JSONResponse(
+                {"error": f"Invalid parameters: {exc}"},
+                status_code=400,
+                headers=_cors_headers(request),
+            )
         # Allow a larger page when both gpu and model are specified — the
         # client fetches the full user slice in one shot for the Insights page.
-        has_filter = bool(p.get("gpu") and p.get("model"))
-        max_limit = 5000 if has_filter else 500
-        limit = min(int(p.get("limit", 100)), max_limit)
+        has_filter = bool(params.gpu and params.model)
+        effective_limit = min(params.limit, 5000 if has_filter else 500)
 
         result = await query_ppb_results(
-            gpu_name=p.get("gpu") or None,
-            vram_gb_min=vram_gb_min,
-            vram_gb_max=vram_gb_max,
-            model=p.get("model") or None,
-            quantization=p.get("quant") or None,
+            gpu_name=params.gpu or None,
+            vram_gb_min=params.vram_min,
+            vram_gb_max=params.vram_max,
+            model=params.model or None,
+            quantization=params.quant or None,
             backend=None,
-            runner_type=p.get("runner_type") or None,
-            concurrent_users=concurrent_users,
-            run_after=p.get("run_after") or None,
-            run_before=p.get("run_before") or None,
-            unified_memory=unified_memory,
-            limit=limit,
+            runner_type=params.runner_type or None,
+            concurrent_users=params.concurrent_users,
+            run_after=params.run_after or None,
+            run_before=params.run_before or None,
+            unified_memory=params.unified_memory,
+            limit=effective_limit,
         )
         return JSONResponse(result.model_dump(), headers=_cors_headers(request))
 
@@ -295,39 +363,26 @@ try:
         """Query qualitative benchmark results with optional filters.
 
         Query params: model, quant (exact), gpu, runner_type,
-        min_context_rot, min_tool_accuracy, min_mt_bench,
-        limit (int, max 200, default 50).
+        min_context_rot (0–1), min_tool_accuracy (0–1), min_mt_bench (0–1),
+        limit (int 1–200, default 50).
         """
-        p = request.query_params
-        min_context_rot: float | None = None
-        if p.get("min_context_rot"):
-            try:
-                min_context_rot = float(p["min_context_rot"])
-            except ValueError:
-                pass
-        min_tool_accuracy: float | None = None
-        if p.get("min_tool_accuracy"):
-            try:
-                min_tool_accuracy = float(p["min_tool_accuracy"])
-            except ValueError:
-                pass
-        min_mt_bench: float | None = None
-        if p.get("min_mt_bench"):
-            try:
-                min_mt_bench = float(p["min_mt_bench"])
-            except ValueError:
-                pass
-        limit = min(int(p.get("limit", 50)), 200)
-
+        try:
+            params = QualitativeQueryParams(**dict(request.query_params))
+        except ValidationError as exc:
+            return JSONResponse(
+                {"error": f"Invalid parameters: {exc}"},
+                status_code=400,
+                headers=_cors_headers(request),
+            )
         result = await query_qualitative_results(
-            model=p.get("model") or None,
-            quantization=p.get("quant") or None,
-            gpu_name=p.get("gpu") or None,
-            runner_type=p.get("runner_type") or None,
-            min_context_rot_score=min_context_rot,
-            min_overall_tool_accuracy=min_tool_accuracy,
-            min_mt_bench_score=min_mt_bench,
-            limit=limit,
+            model=params.model or None,
+            quantization=params.quant or None,
+            gpu_name=params.gpu or None,
+            runner_type=params.runner_type or None,
+            min_context_rot_score=params.min_context_rot,
+            min_overall_tool_accuracy=params.min_tool_accuracy,
+            min_mt_bench_score=params.min_mt_bench,
+            limit=params.limit,
         )
         return JSONResponse(result.model_dump(), headers=_cors_headers(request))
 
@@ -337,28 +392,22 @@ try:
     async def api_compare_quants(request: Request) -> JSONResponse:
         """Compare quantizations for a model across quantitative + qualitative metrics.
 
-        Query params: model (required), gpu, runner_type, concurrent_users (int).
+        Query params: model (required), gpu, runner_type,
+        concurrent_users (int, one of 1/2/4/8/16/32).
         """
-        p = request.query_params
-        model = p.get("model") or ""
-        if not model:
+        try:
+            params = CompareQueryParams(**dict(request.query_params))
+        except ValidationError as exc:
             return JSONResponse(
-                {"error": "model parameter is required"},
+                {"error": f"Invalid parameters: {exc}"},
                 status_code=400,
                 headers=_cors_headers(request),
             )
-        concurrent_users: int | None = None
-        if p.get("concurrent_users"):
-            try:
-                concurrent_users = int(p["concurrent_users"])
-            except ValueError:
-                pass
-
         quant_result = await compare_quants_quantitative(
-            model=model,
-            gpu_name=p.get("gpu") or None,
-            runner_type=p.get("runner_type") or None,
-            concurrent_users=concurrent_users,
+            model=params.model,
+            gpu_name=params.gpu or None,
+            runner_type=params.runner_type or None,
+            concurrent_users=params.concurrent_users,
         )
         return JSONResponse(quant_result.model_dump(), headers=_cors_headers(request))
 
@@ -370,19 +419,18 @@ try:
 
         Query params: model (required), quant (required, exact), gpu.
         """
-        p = request.query_params
-        model = p.get("model") or ""
-        quant = p.get("quant") or ""
-        if not model or not quant:
+        try:
+            params = ContextRotQueryParams(**dict(request.query_params))
+        except ValidationError as exc:
             return JSONResponse(
-                {"error": "model and quant parameters are required"},
+                {"error": f"Invalid parameters: {exc}"},
                 status_code=400,
                 headers=_cors_headers(request),
             )
         result = await get_context_rot_breakdown(
-            model=model,
-            quantization=quant,
-            gpu_name=p.get("gpu") or None,
+            model=params.model,
+            quantization=params.quant,
+            gpu_name=params.gpu or None,
         )
         return JSONResponse(result.model_dump(), headers=_cors_headers(request))
 
@@ -394,21 +442,107 @@ try:
 
         Query params: model (required), quant (required, exact), gpu.
         """
-        p = request.query_params
-        model = p.get("model") or ""
-        quant = p.get("quant") or ""
-        if not model or not quant:
+        try:
+            params = ToolAccuracyQueryParams(**dict(request.query_params))
+        except ValidationError as exc:
             return JSONResponse(
-                {"error": "model and quant parameters are required"},
+                {"error": f"Invalid parameters: {exc}"},
                 status_code=400,
                 headers=_cors_headers(request),
             )
         result = await get_tool_accuracy_breakdown(
-            model=model,
-            quantization=quant,
-            gpu_name=p.get("gpu") or None,
+            model=params.model,
+            quantization=params.quant,
+            gpu_name=params.gpu or None,
         )
         return JSONResponse(result.model_dump(), headers=_cors_headers(request))
+
+    # ── /api/v1/docs ────────────────────────────────────────────────
+
+    @app.custom_route("/api/v1/docs", methods=["GET"])
+    async def api_docs(request: Request) -> JSONResponse:
+        """Return documentation for all available REST endpoints."""
+        rate_limit_env = os.environ.get("RATE_LIMIT", "60/minute")
+        docs = {
+            "version": __version__,
+            "rate_limit": f"{rate_limit_env} per IP (applies to /api/ paths only)",
+            "endpoints": [
+                {
+                    "path": "/health",
+                    "method": "GET",
+                    "description": "Server health check. Returns version, row counts, and last refresh time.",
+                    "params": [],
+                    "example": "/health",
+                },
+                {
+                    "path": "/api/v1/summary",
+                    "method": "GET",
+                    "description": "List all tested GPUs, models, quantizations, and runner types.",
+                    "params": [],
+                    "example": "/api/v1/summary",
+                },
+                {
+                    "path": "/api/v1/hardware",
+                    "method": "GET",
+                    "description": "List GPUs with VRAM capacity and result counts.",
+                    "params": [],
+                    "example": "/api/v1/hardware",
+                },
+                {
+                    "path": "/api/v1/models",
+                    "method": "GET",
+                    "description": "List models with available quantizations and result counts.",
+                    "params": [],
+                    "example": "/api/v1/models",
+                },
+                {
+                    "path": "/api/v1/results",
+                    "method": "GET",
+                    "description": (
+                        "Query quantitative benchmark results with optional filters. "
+                        "Providing both gpu and model raises the row cap to 5000."
+                    ),
+                    "schema": ResultsQueryParams.model_json_schema(),
+                    "example": "/api/v1/results?gpu=RTX+4090&model=Qwen3.5-8B&limit=50",
+                },
+                {
+                    "path": "/api/v1/qualitative",
+                    "method": "GET",
+                    "description": "Query qualitative results (context-rot, tool-accuracy, MT-Bench).",
+                    "schema": QualitativeQueryParams.model_json_schema(),
+                    "example": "/api/v1/qualitative?min_context_rot=0.7&limit=20",
+                },
+                {
+                    "path": "/api/v1/compare/quants",
+                    "method": "GET",
+                    "description": "Compare quantizations for a model across quantitative and qualitative metrics.",
+                    "schema": CompareQueryParams.model_json_schema(),
+                    "example": "/api/v1/compare/quants?model=Qwen3.5-8B&gpu=RTX+4090",
+                },
+                {
+                    "path": "/api/v1/context-rot",
+                    "method": "GET",
+                    "description": "Get context-rot score breakdown for a model × quant × GPU.",
+                    "schema": ContextRotQueryParams.model_json_schema(),
+                    "example": "/api/v1/context-rot?model=Qwen3.5-8B&quant=Q4_K_M",
+                },
+                {
+                    "path": "/api/v1/tool-accuracy",
+                    "method": "GET",
+                    "description": "Get tool-accuracy breakdown for a model × quant × GPU.",
+                    "schema": ToolAccuracyQueryParams.model_json_schema(),
+                    "example": "/api/v1/tool-accuracy?model=Qwen3.5-8B&quant=Q4_K_M",
+                },
+                {
+                    "path": "/api/v1/docs",
+                    "method": "GET",
+                    "description": "This endpoint. Returns documentation for all REST endpoints.",
+                    "params": [],
+                    "example": "/api/v1/docs",
+                },
+            ],
+        }
+        return JSONResponse(docs, headers=_cors_headers(request))
 
 except ImportError:
     # starlette is pulled in by fastmcp; if it's missing, REST endpoints are unavailable but stdio still works.
@@ -424,11 +558,19 @@ def main() -> None:
     if transport == "stdio":
         app.run(transport="stdio")
     else:
+        max_requests, window_seconds = _parse_rate_limit()
         app.run(
             transport="streamable-http",
             host=host,
             port=port,
-            middleware=[Middleware(_AcceptPatchMiddleware)],
+            middleware=[
+                Middleware(_AcceptPatchMiddleware),
+                Middleware(
+                    _RateLimitMiddleware,
+                    max_requests=max_requests,
+                    window_seconds=window_seconds,
+                ),
+            ],
         )
 
 
