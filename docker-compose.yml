@@ -13,6 +13,7 @@ services:
       - HOST=0.0.0.0
       - PORT=9933
       - LOG_LEVEL=INFO
+      - HF_TOKEN=${HF_TOKEN}
     volumes:
       - hf-cache:/data/huggingface
     healthcheck:
