@@ -5,6 +5,7 @@ from __future__ import annotations
 import collections
 import json
 import logging
+import math
 import os
 import sys
 import time
@@ -53,13 +54,40 @@ class _AcceptPatchMiddleware:
         if scope["type"] == "http" and scope.get("path", "").rstrip("/") == "/mcp":
             accept_bytes = next((v for k, v in scope["headers"] if k == b"accept"), None)
             accept = accept_bytes.decode("latin-1") if accept_bytes is not None else ""
-            if "text/event-stream" not in accept:
-                new_accept = (accept + ", text/event-stream").lstrip(", ")
+            # MCP streamable-HTTP requires Accept to contain BOTH application/json AND
+            # text/event-stream. Patch whichever values are missing so non-compliant
+            # clients (that send only one of the two) are not rejected with 406/400.
+            needs_json = "application/json" not in accept
+            needs_sse = "text/event-stream" not in accept
+            if needs_json or needs_sse:
+                parts = [accept] if accept else []
+                if needs_json:
+                    parts.append("application/json")
+                if needs_sse:
+                    parts.append("text/event-stream")
+                new_accept = ", ".join(p for p in parts if p)
                 new_headers = [(k, v) for k, v in scope["headers"] if k != b"accept"]
                 new_headers.append((b"accept", new_accept.encode("latin-1")))
                 scope = dict(scope)
                 scope["headers"] = new_headers
         await self.app(scope, receive, send)
+
+
+def _safe_dump(obj: object) -> object:
+    """Recursively replace NaN/Inf float values with None for JSON-safe serialization.
+
+    Starlette's JSONResponse uses json.dumps(..., allow_nan=False), which raises
+    ValueError on NaN/Inf.  Some raw dataset rows have NaN for numeric columns
+    (e.g. qualitative rows have no throughput_tok_s value), which propagate through
+    the DataFrame → Pydantic model → model_dump() pipeline as Python float NaN.
+    """
+    if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
+        return None
+    if isinstance(obj, dict):
+        return {k: _safe_dump(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_safe_dump(v) for v in obj]
+    return obj
 
 
 def _parse_rate_limit() -> tuple[int, int]:
@@ -249,7 +277,7 @@ try:
     async def api_summary(request: Request) -> JSONResponse:
         """List all tested GPUs, models, quantizations, runner types, and row count."""
         result = await list_tested_configs()
-        return JSONResponse(result.model_dump(), headers=_cors_headers(request))
+        return JSONResponse(_safe_dump(result.model_dump()), headers=_cors_headers(request))
 
     # ── /api/v1/hardware ─────────────────────────────────────────────────────
 
@@ -354,7 +382,7 @@ try:
             unified_memory=params.unified_memory,
             limit=effective_limit,
         )
-        return JSONResponse(result.model_dump(), headers=_cors_headers(request))
+        return JSONResponse(_safe_dump(result.model_dump()), headers=_cors_headers(request))
 
     # ── /api/v1/qualitative ──────────────────────────────────────────────────
 
@@ -384,7 +412,7 @@ try:
             min_mt_bench_score=params.min_mt_bench,
             limit=params.limit,
         )
-        return JSONResponse(result.model_dump(), headers=_cors_headers(request))
+        return JSONResponse(_safe_dump(result.model_dump()), headers=_cors_headers(request))
 
     # ── /api/v1/compare/quants ───────────────────────────────────────────────
 
@@ -409,7 +437,7 @@ try:
             runner_type=params.runner_type or None,
             concurrent_users=params.concurrent_users,
         )
-        return JSONResponse(quant_result.model_dump(), headers=_cors_headers(request))
+        return JSONResponse(_safe_dump(quant_result.model_dump()), headers=_cors_headers(request))
 
     # ── /api/v1/context-rot ──────────────────────────────────────────────────
 
@@ -432,7 +460,7 @@ try:
             quantization=params.quant,
             gpu_name=params.gpu or None,
         )
-        return JSONResponse(result.model_dump(), headers=_cors_headers(request))
+        return JSONResponse(_safe_dump(result.model_dump()), headers=_cors_headers(request))
 
     # ── /api/v1/tool-accuracy ────────────────────────────────────────────────
 
@@ -455,7 +483,7 @@ try:
             quantization=params.quant,
             gpu_name=params.gpu or None,
         )
-        return JSONResponse(result.model_dump(), headers=_cors_headers(request))
+        return JSONResponse(_safe_dump(result.model_dump()), headers=_cors_headers(request))
 
     # ── /api/v1/docs ────────────────────────────────────────────────
 
