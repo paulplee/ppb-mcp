@@ -20,6 +20,7 @@ class ResultsQueryParams(BaseModel):
     unified_memory: bool | None = None
     run_after: str | None = None
     run_before: str | None = None
+    llm_flags_label: str | None = None
     # Schema cap is 5000 (the endpoint enforces the tighter 500 / 5000 dynamic cap).
     limit: int = Field(default=100, ge=1, le=5000)
 

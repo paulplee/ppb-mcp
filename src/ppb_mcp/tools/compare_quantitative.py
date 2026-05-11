@@ -83,6 +83,7 @@ async def compare_quants_quantitative(
     gpu_name: str | None = None,
     runner_type: str | None = None,
     concurrent_users: int | None = None,
+    llm_flags_label: str | None = None,
 ) -> QuantitativeComparison:
     """Compare quantitative benchmark scores across quantizations for a model.
 
@@ -102,6 +103,9 @@ async def compare_quants_quantitative(
         gpu_name: Optional partial match on GPU name.
         runner_type: Optional filter by runner type (recommended to avoid mixing).
         concurrent_users: Optional exact match on concurrent_users.
+        llm_flags_label: Optional exact match on llm_flags_label variant (e.g.
+            "ncmoe_40"). When omitted and multiple variants exist for the same
+            (model, quant, gpu), rows are broken out per variant.
     """
     store = PPBDataStore.instance()
     await store.ensure_loaded()
@@ -129,6 +133,9 @@ async def compare_quants_quantitative(
         sub = sub[sub["runner_type"].astype(str).str.contains(runner_type, case=False, na=False)]
     if concurrent_users is not None and "concurrent_users" in sub.columns:
         sub = sub[sub["concurrent_users"] == concurrent_users]
+    # Narrow to a specific flag variant when requested.
+    if not is_blank(llm_flags_label) and "llm_flags_label" in sub.columns:
+        sub = sub[sub["llm_flags_label"] == llm_flags_label]
 
     sub = sub.dropna(subset=["quant", "throughput_tok_s"])
 
@@ -160,8 +167,23 @@ async def compare_quants_quantitative(
 
     vram_col = "gpu_total_vram_gb" if "gpu_total_vram_gb" in sub.columns else "gpu_vram_gb"
 
+    # Determine groupby key: include llm_flags_label when multiple variants exist
+    # and the caller has not already narrowed to one variant.
+    group_by_cols = ["quant"]
+    if (
+        is_blank(llm_flags_label)
+        and "llm_flags_label" in sub.columns
+        and sub["llm_flags_label"].nunique(dropna=False) > 1
+    ):
+        group_by_cols.append("llm_flags_label")
+
     rows: list[QuantitativeComparisonRow] = []
-    for quant_label, group in sub.groupby("quant"):
+    for group_key, group in sub.groupby(group_by_cols, dropna=False):
+        if len(group_by_cols) == 1:
+            quant_label = group_key
+            flags_label: str | None = llm_flags_label if not is_blank(llm_flags_label) else None
+        else:
+            quant_label, flags_label = group_key  # type: ignore[misc]
         tps_vals = group["throughput_tok_s"].dropna()
         avg_tps = float(tps_vals.mean()) if not tps_vals.empty else None
 
@@ -203,6 +225,7 @@ async def compare_quants_quantitative(
         rows.append(
             QuantitativeComparisonRow(
                 quantization=str(quant_label),
+                llm_flags_label=str(flags_label) if flags_label is not None else None,
                 tokens_per_second=round(avg_tps, 2) if avg_tps is not None else None,
                 avg_ttft_ms=round(avg_ttft, 2) if avg_ttft is not None else None,
                 p50_itl_ms=round(avg_itl, 2) if avg_itl is not None else None,
@@ -213,7 +236,7 @@ async def compare_quants_quantitative(
             )
         )
 
-    rows.sort(key=lambda r: r.quantization)
+    rows.sort(key=lambda r: (r.quantization, r.llm_flags_label or ""))
 
     # Identify top performers.
     fastest_quant: str | None = None

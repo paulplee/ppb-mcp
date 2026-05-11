@@ -39,6 +39,10 @@ class BenchmarkRow(BaseModel):
     gpu_power_limit_w: float | None = None
     submitter: str | None = None
     timestamp: str | None = None
+    # LLM flags (schema v0.10.0+)
+    llm_flags: str | None = None  # JSON-encoded dict of llama.cpp flags, e.g. '{"ncmoe": 40}'
+    llm_flags_label: str | None = None  # human-readable variant label, e.g. "ncmoe_40"
+    extra_flags_raw: str | None = None  # verbatim extra CLI tokens
 
 
 class QueryResult(BaseModel):
@@ -219,6 +223,7 @@ class QualitativeQueryResult(BaseModel):
 
 class QuantitativeComparisonRow(BaseModel):
     quantization: str
+    llm_flags_label: str | None = None  # variant label, e.g. "ncmoe_40"; None = default flags
     tokens_per_second: float | None = None
     avg_ttft_ms: float | None = None
     p50_itl_ms: float | None = None

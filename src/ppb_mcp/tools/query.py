@@ -87,6 +87,9 @@ def _row_to_model(r: pd.Series) -> BenchmarkRow:
         gpu_power_limit_w=_opt_float("gpu_power_limit_w"),
         submitter=_opt_str("submitter"),
         timestamp=_opt_str("timestamp"),
+        llm_flags=_opt_str("llm_flags"),
+        llm_flags_label=_opt_str("llm_flags_label"),
+        extra_flags_raw=_opt_str("extra_flags_raw"),
     )
 
 
@@ -104,6 +107,7 @@ def _apply_filters(
     run_after: str | None = None,
     run_before: str | None = None,
     unified_memory: bool | None = None,
+    llm_flags_label: str | None = None,
 ) -> pd.DataFrame:
     out = df
     if not is_blank(gpu_name) and "gpu_name" in out.columns:
@@ -155,6 +159,8 @@ def _apply_filters(
             out = out[col.fillna(False).astype(bool)]
         else:
             out = out[~col.fillna(False).astype(bool)]
+    if not is_blank(llm_flags_label) and "llm_flags_label" in out.columns:
+        out = out[out["llm_flags_label"] == llm_flags_label]
     return out
 
 
@@ -179,6 +185,7 @@ async def query_ppb_results(
     run_after: str | None = None,
     run_before: str | None = None,
     unified_memory: bool | None = None,
+    llm_flags_label: str | None = None,
     limit: int = 50,
 ) -> QueryResult:
     """Filter raw benchmark rows from PPB.
@@ -220,6 +227,8 @@ async def query_ppb_results(
         run_before: ISO 8601 date string — only return rows benchmarked before this date.
         unified_memory: When True, only return Apple Silicon / unified-memory results.
             When False, return only discrete GPU results.
+        llm_flags_label: Exact match on llm_flags_label variant (e.g. "ncmoe_40"). When
+            omitted, rows for all flag variants are returned.
         limit: Max rows to return (1–500).
 
     Example calls:
@@ -247,6 +256,7 @@ async def query_ppb_results(
             run_after,
             run_before,
             unified_memory,
+            llm_flags_label,
         )
     )
 
@@ -263,6 +273,7 @@ async def query_ppb_results(
         run_after=run_after,
         run_before=run_before,
         unified_memory=unified_memory,
+        llm_flags_label=llm_flags_label,
     )
     filtered_count = len(filtered)
 

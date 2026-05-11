@@ -70,6 +70,51 @@ class TestQuery:
         result = await query_ppb_results(limit=2)
         assert len(result.rows) <= 2
 
+    @pytest.mark.asyncio
+    async def test_filter_by_llm_flags_label(self) -> None:
+        """Only the row with llm_flags_label='ncmoe_40' should be returned."""
+        import pandas as pd
+
+        from ppb_mcp.data import PPBDataStore
+
+        baseline_row = {
+            "gpu_name": "TestGPU-16GB",
+            "gpu_total_vram_gb": 16.0,
+            "model_base": "Qwen3-27B",
+            "model": "org/Qwen3-27B-GGUF/Qwen3-27B-Q4_K_M.gguf",
+            "model_org": "org",
+            "quant": "Q4_K_M",
+            "concurrent_users": 1,
+            "throughput_tok_s": 50.0,
+            "backends": "CUDA",
+            "runner_type": "llama-server",
+            "llm_flags": "{}",
+            "llm_flags_label": "baseline",
+            "extra_flags_raw": "",
+            "timestamp": "2026-05-01T00:00:00+00:00",
+        }
+        ncmoe_row = {
+            **baseline_row,
+            "throughput_tok_s": 38.0,
+            "llm_flags": '{"ncmoe": 40}',
+            "llm_flags_label": "ncmoe_40",
+            "extra_flags_raw": "--ncmoe 40",
+        }
+
+        df = pd.DataFrame([baseline_row, ncmoe_row])
+        store = PPBDataStore(loader=lambda: df)
+        PPBDataStore.set_instance(store)
+
+        try:
+            result = await query_ppb_results(llm_flags_label="ncmoe_40")
+            assert result.filtered_count == 1, (
+                f"Expected 1 filtered row, got {result.filtered_count}"
+            )
+            assert len(result.rows) == 1
+            assert result.rows[0].llm_flags_label == "ncmoe_40"
+        finally:
+            PPBDataStore.set_instance(None)
+
 
 class TestRecommend:
     @pytest.mark.asyncio
