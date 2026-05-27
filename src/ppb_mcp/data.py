@@ -196,7 +196,16 @@ class PPBDataStore:
 
         repo_files = list(api.list_repo_files(self.dataset, repo_type="dataset"))
         shards = [f for f in repo_files if f.endswith(".jsonl")]
-        parquet_files = [f for f in repo_files if f.endswith(".parquet")]
+        # Bulk parquet exports use the row-level schema (throughput_tok_s,
+        # timestamp, …) and are safe to ingest. The pre-aggregated stats file
+        # (``ppb_results_aggregated.parquet``) uses ``mean_throughput_tok_s``
+        # and lacks a ``timestamp`` column, so every row would collapse to the
+        # same ``_row_id`` and pollute the cache — skip it.
+        parquet_files = [
+            f
+            for f in repo_files
+            if f.endswith(".parquet") and "aggregated" not in os.path.basename(f)
+        ]
 
         rows_added = 0
         shards_synced = 0
