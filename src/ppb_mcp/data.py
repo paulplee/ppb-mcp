@@ -148,6 +148,10 @@ class PPBDataStore:
             return
 
         self._cache.setup()
+        # One-time migration: if an older build polluted the cache by ingesting
+        # the pre-aggregated parquet, wipe it and force a clean re-sync.
+        if self._cache.purge_aggregated_pollution():
+            force_redownload = True
         if not force_redownload and self._cache.is_fresh(self.refresh_interval_hours):
             df = self._cache.load_dataframe()
             self._validate_schema(df)

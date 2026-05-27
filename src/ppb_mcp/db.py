@@ -158,6 +158,37 @@ class SQLiteCache:
             con.execute("DELETE FROM shard_meta")
             con.commit()
 
+    def purge_aggregated_pollution(self) -> bool:
+        """Detect and clean caches polluted by pre-aggregated parquet ingest.
+
+        Older builds of the data layer ingested ``ppb_results_aggregated.parquet``
+        whose rows lack a ``timestamp`` field and use ``mean_throughput_tok_s``
+        instead of ``throughput_tok_s``. Because every aggregated row collapses
+        to a tiny set of ``_row_id`` hashes (suite_id/runner_type/run_type/
+        gpu_name/model_base/quant/timestamp) it silently OVERWROTE legitimate
+        row payloads via ``INSERT OR REPLACE``.
+
+        If we detect a shard_meta entry whose filename contains "aggregated",
+        wipe ``rows`` + ``shard_meta`` so the next sync repopulates from the
+        clean parquet/JSONL shards. Returns True when a purge occurred.
+        """
+        with self._connect() as con:
+            try:
+                row = con.execute(
+                    "SELECT COUNT(*) FROM shard_meta WHERE filename LIKE '%aggregated%'"
+                ).fetchone()
+            except sqlite3.OperationalError:
+                return False
+            if not row or row[0] == 0:
+                return False
+            con.execute("DELETE FROM rows")
+            con.execute("DELETE FROM shard_meta")
+            con.commit()
+        logger.warning(
+            "Purged SQLite cache: detected pre-aggregated parquet pollution from earlier ingest."
+        )
+        return True
+
     # ── data ingest / read ────────────────────────────────────────────────
     def upsert_rows(self, rows: list[dict], shard_filename: str) -> int:
         if not rows:
