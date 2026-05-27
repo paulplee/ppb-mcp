@@ -333,9 +333,15 @@ try:
                     if "runner_type" in grp.columns
                     else []
                 )
+                model_org = None
+                if "model_org" in grp.columns:
+                    orgs = grp["model_org"].dropna()
+                    if not orgs.empty:
+                        model_org = str(orgs.iloc[0])
                 rows.append(
                     {
                         "model": str(model),
+                        "model_org": model_org,
                         "quantizations": quants,
                         "runner_types": runner_types,
                         "result_count": int(len(grp)),
