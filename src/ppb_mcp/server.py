@@ -387,6 +387,7 @@ try:
             run_before=params.run_before or None,
             unified_memory=params.unified_memory,
             limit=effective_limit,
+            exact_model=True,  # REST endpoint uses exact model names from the picker
         )
         return JSONResponse(_safe_dump(result.model_dump()), headers=_cors_headers(request))
 

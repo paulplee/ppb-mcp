@@ -108,6 +108,7 @@ def _apply_filters(
     run_before: str | None = None,
     unified_memory: bool | None = None,
     llm_flags_label: str | None = None,
+    exact_model: bool = False,
 ) -> pd.DataFrame:
     out = df
     if not is_blank(gpu_name) and "gpu_name" in out.columns:
@@ -119,7 +120,10 @@ def _apply_filters(
         if vram_gb_max is not None:
             out = out[out[vram_col].fillna(float("inf")) <= vram_gb_max]
     if not is_blank(model) and "model_base" in out.columns:
-        out = out[out["model_base"].astype(str).str.contains(model, case=False, na=False)]  # type: ignore[arg-type]
+        if exact_model:
+            out = out[out["model_base"].astype(str) == model]
+        else:
+            out = out[out["model_base"].astype(str).str.contains(model, case=False, na=False)]  # type: ignore[arg-type]
     if not is_blank(quantization) and "quant" in out.columns:
         out = out[out["quant"] == quantization]
     if not is_blank(backend) and "backends" in out.columns:
@@ -187,6 +191,7 @@ async def query_ppb_results(
     unified_memory: bool | None = None,
     llm_flags_label: str | None = None,
     limit: int = 50,
+    exact_model: bool = False,
 ) -> QueryResult:
     """Filter raw benchmark rows from PPB.
 
@@ -274,6 +279,7 @@ async def query_ppb_results(
         run_before=run_before,
         unified_memory=unified_memory,
         llm_flags_label=llm_flags_label,
+        exact_model=exact_model,
     )
     filtered_count = len(filtered)
 
